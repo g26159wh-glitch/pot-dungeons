@@ -1,0 +1,6 @@
+{
+  "name": "ダンジョンRPG - 完全版",
+  "description": "モンスター（オルゴン・ラリ・ドレイム）を選び、全10階層の敵やボスとスキル・状態異常を駆使して戦う階層ダンジョンRPG",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
