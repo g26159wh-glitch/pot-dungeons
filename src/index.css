@@ -8,17 +8,33 @@ body {
   padding: 0;
 }
 
-/* Custom scrollbar for retro log box */
-.log-box::-webkit-scrollbar {
+/* Custom scrollbar for retro log box and lists */
+.log-box::-webkit-scrollbar,
+.monster-list-box::-webkit-scrollbar,
+.modal-content::-webkit-scrollbar {
   width: 6px;
 }
-.log-box::-webkit-scrollbar-track {
+.log-box::-webkit-scrollbar-track,
+.monster-list-box::-webkit-scrollbar-track,
+.modal-content::-webkit-scrollbar-track {
   background: #0d0d0d;
 }
-.log-box::-webkit-scrollbar-thumb {
+.log-box::-webkit-scrollbar-thumb,
+.monster-list-box::-webkit-scrollbar-thumb,
+.modal-content::-webkit-scrollbar-thumb {
   background: #333333;
   border-radius: 3px;
 }
-.log-box::-webkit-scrollbar-thumb:hover {
+.log-box::-webkit-scrollbar-thumb:hover,
+.monster-list-box::-webkit-scrollbar-thumb:hover,
+.modal-content::-webkit-scrollbar-thumb:hover {
   background: #555555;
 }
+
+.rank-N { background-color: #555555; color: #ffffff; }
+.rank-R { background-color: #2980b9; color: #ffffff; }
+.rank-SR { background-color: #8e44ad; color: #ffffff; }
+.rank-SSR { background-color: #f39c12; color: #ffffff; }
+.rank-UR { background-color: #c0392b; color: #ffffff; }
+.rank-初期 { background-color: #555555; color: #ffffff; }
+.rank-カスタム { background-color: #16a085; color: #ffffff; }
