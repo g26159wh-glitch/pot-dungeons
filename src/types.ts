@@ -1,105 +1,76 @@
-export type AbilityType = 'オルゴン' | 'ラリ' | 'ドレイム' | 'ゾンビ' | 'ノーマル';
+export type SkillEffectType =
+  | ''
+  | 'freeze'
+  | 'burn'
+  | 'confuse'
+  | 'bound'
+  | 'abyss'
+  | 'bleed'
+  | 'shock'
+  | 'fear'
+  | 'blind';
 
-export type StatusType = 'burned' | 'frozen' | 'confused' | 'bind';
+export type GachaRank = 'N' | 'R' | 'SR' | 'SSR' | 'UR' | 'SCR';
 
-export type RarityRank = '初期' | 'N' | 'R' | 'SR' | 'SSR' | 'UR' | 'カスタム';
-
-export type BossType = '' | '中BOSS' | 'BOSS' | '強BOSS' | '狂BOSS' | '最恐BOSS';
-
-export interface StatusEffect {
-  type: StatusType;
-  turns: number;
-}
-
-export interface MonsterProfile {
-  id?: string;
+export interface SkillAtkDef {
   name: string;
-  hp: number;
-  atk: number;
-  type: AbilityType;
-  rank: RarityRank;
-  level: number;
-  maxLevel: number;
-  baseHp: number;
-  baseAtk: number;
+  cost: number;
+  effect?: SkillEffectType;
 }
 
-export interface Player {
+export interface SkillRecDef {
   name: string;
-  hp: number;
-  maxHp: number;
-  atk: number;
-  sp: number;
-  type: AbilityType | '';
-  status: StatusEffect | null;
-  hasRevived: boolean;
-  deathZombies: number;
-  level: number;
-  maxLevel: number;
-  rank: RarityRank;
-}
-
-export interface EnemyDef {
-  name: string;
-  hp: number;
-  atk: number;
-  type?: 'golem' | 'enon' | 'ushi' | 'obadora' | '';
-  bossType?: BossType;
-}
-
-export interface Enemy {
-  name: string;
-  hp: number;
-  maxHp: number;
-  atk: number;
-  baseAtk: number;
-  status: StatusEffect | null;
-  type: 'golem' | 'enon' | 'ushi' | 'obadora' | '';
-  bossType: BossType;
-  buffTurns: number;
-}
-
-export interface Floor {
-  name: string;
-  enemies: EnemyDef[];
-  clearRewardGems?: number;
-}
-
-export interface GachaRates {
-  UR: number;
-  SSR: number;
-  SR: number;
-  R: number;
-  N: number;
-}
-
-export interface GachaPullResult {
-  monster: MonsterProfile;
-  isNew: boolean;
-  levelUp: boolean;
-  oldLevel?: number;
-  newLevel?: number;
-  refundGems: number;
-}
-
-export interface TransferHistoryItem {
-  id: string;
-  from: string;
-  to: string;
+  cost: number;
   amount: number;
-  timestamp: string;
+  calcAmount?: number;
 }
 
-export interface SaveData {
-  userTag: string;
-  userPass: string;
+export interface MasterMonster {
+  hp: number;
+  atk: number;
+  img: string;
+  ability?: string;
+  skillAtk?: SkillAtkDef | null;
+  skillRec?: SkillRecDef | null;
+}
+
+export interface UserMonster {
+  name: string;
+  level: number;
+  hp?: number;
+}
+
+export interface CalculatedUnit {
+  name: string;
+  level: number;
+  hp: number;
+  maxHp: number;
+  atk: number;
+  img: string;
+  ability?: string | null;
+  skillAtk?: SkillAtkDef | null;
+  skillRec?: SkillRecDef | null;
+  pt?: number;
+  revived?: boolean;
+  status: UnitStatus;
+}
+
+export interface UnitStatus {
+  freeze: number;
+  burn: number;
+  confuse: number;
+  bound: number;
+  bleed: number;
+  shock: number;
+  blind: number;
+  atkBuff: number;
+}
+
+export interface UserAccount {
+  name: string;
+  pass: string;
   gems: number;
-  currentFloorIndex: number;
-  currentEnemyIndex: number;
-  isHomeUnlocked: boolean;
-  playerSelectableMonsters: MonsterProfile[];
-  player: Player;
-  floors: Floor[];
-  gachaRates?: GachaRates;
-  transferHistory?: TransferHistoryItem[];
+  floor: number;
+  monsters: UserMonster[];
+  selectedIndex: number;
 }
