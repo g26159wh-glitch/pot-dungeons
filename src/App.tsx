@@ -7,26 +7,29 @@ import {
   Floor,
   GachaRates,
   StatusEffect,
-  BossType,
-  RarityRank,
+  GachaPullResult,
 } from './types';
 import {
-  ADMIN_CODE,
   BOSS_REWARDS,
+  RARITY_REFUND_GEMS,
+  RARITY_DEFAULT_MAX_LEVEL,
   DEFAULT_PLAYER_SELECTABLE_MONSTERS,
   DEFAULT_GACHA_POOL,
   DEFAULT_FLOORS,
 } from './data/gameData';
+import { GachaModal } from './components/GachaModal';
+import { TransferModal } from './components/TransferModal';
+import { EnhanceModal } from './components/EnhanceModal';
+import { AdminModal } from './components/AdminModal';
 
 function getRandomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 export default function App() {
-  // Screens: 'login' | 'setup' | 'home' | 'game'
   const [currentScreen, setCurrentScreen] = useState<'login' | 'setup' | 'home' | 'game'>('login');
 
-  // User Authentication & Save State
+  // User state
   const [userTag, setUserTag] = useState('冒険者');
   const [userPass, setUserPass] = useState('');
   const [playerTagInput, setPlayerTagInput] = useState('');
@@ -34,7 +37,7 @@ export default function App() {
   const [gems, setGems] = useState(0);
   const [isHomeUnlocked, setIsHomeUnlocked] = useState(false);
 
-  // Monsters & Floors
+  // Monsters, Gacha, Floors
   const [playerSelectableMonsters, setPlayerSelectableMonsters] = useState<MonsterProfile[]>(
     DEFAULT_PLAYER_SELECTABLE_MONSTERS
   );
@@ -43,7 +46,6 @@ export default function App() {
   const [currentFloorIndex, setCurrentFloorIndex] = useState(0);
   const [currentEnemyIndex, setCurrentEnemyIndex] = useState(0);
 
-  // Gacha Rates
   const [gachaRates, setGachaRates] = useState<GachaRates>({
     UR: 0.5,
     SSR: 4.5,
@@ -63,6 +65,9 @@ export default function App() {
     status: null,
     hasRevived: false,
     deathZombies: 0,
+    level: 1,
+    maxLevel: 10,
+    rank: '初期',
   });
 
   const [enemy, setEnemy] = useState<Enemy>({
@@ -84,61 +89,34 @@ export default function App() {
   const [showHomeBtn, setShowHomeBtn] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
 
-  // Admin Modal state
+  // Modals state
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
-  const [adminCodeInput, setAdminCodeInput] = useState('');
-  const [adminTab, setAdminTab] = useState<'status' | 'enemy' | 'gacha' | 'floor'>('status');
+  const [isGachaModalOpen, setIsGachaModalOpen] = useState(false);
+  const [gachaResults, setGachaResults] = useState<GachaPullResult[]>([]);
+  const [gachaTotalRefund, setGachaTotalRefund] = useState(0);
 
-  // Admin form inputs
-  const [adminSetGems, setAdminSetGems] = useState('');
-  const [adminSetAtk, setAdminSetAtk] = useState('');
-  const [adminCustomMName, setAdminCustomMName] = useState('');
-  const [adminCustomMHp, setAdminCustomMHp] = useState(200);
-  const [adminCustomMAtk, setAdminCustomMAtk] = useState(15);
-  const [adminCustomMType, setAdminCustomMType] = useState<AbilityType>('オルゴン');
-
-  // Admin enemy form
-  const [newEnemyFloorSelect, setNewEnemyFloorSelect] = useState(0);
-  const [newEnemyName, setNewEnemyName] = useState('');
-  const [newEnemyHp, setNewEnemyHp] = useState(100);
-  const [newEnemyAtk, setNewEnemyAtk] = useState(10);
-  const [newEnemyType, setNewEnemyType] = useState<'golem' | 'enon' | 'ushi' | 'obadora' | ''>('');
-  const [newEnemyBossType, setNewEnemyBossType] = useState<BossType>('');
-
-  // Admin gacha form
-  const [rateUrInput, setRateUrInput] = useState(0.5);
-  const [rateSsrInput, setRateSsrInput] = useState(4.5);
-  const [newGachaName, setNewGachaName] = useState('');
-  const [newGachaRank, setNewGachaRank] = useState<'N' | 'R' | 'SR' | 'SSR' | 'UR'>('N');
-  const [newGachaHp, setNewGachaHp] = useState(100);
-  const [newGachaAtk, setNewGachaAtk] = useState(10);
-  const [newGachaType, setNewGachaType] = useState<AbilityType>('オルゴン');
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [isEnhanceModalOpen, setIsEnhanceModalOpen] = useState(false);
 
   const logBoxRef = useRef<HTMLDivElement>(null);
   const homeLogBoxRef = useRef<HTMLDivElement>(null);
   const enemyTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-scroll battle logs
   useEffect(() => {
     if (logBoxRef.current) {
       logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
     }
   }, [logs]);
 
-  // Auto-scroll home logs
   useEffect(() => {
     if (homeLogBoxRef.current) {
       homeLogBoxRef.current.scrollTop = homeLogBoxRef.current.scrollHeight;
     }
   }, [homeLogs]);
 
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
-      if (enemyTimerRef.current) {
-        clearInterval(enemyTimerRef.current);
-      }
+      if (enemyTimerRef.current) clearInterval(enemyTimerRef.current);
     };
   }, []);
 
@@ -150,9 +128,16 @@ export default function App() {
     setHomeLogs((prev) => [...prev, text]);
   };
 
+  const stopEnemyTimer = () => {
+    if (enemyTimerRef.current) {
+      clearInterval(enemyTimerRef.current);
+      enemyTimerRef.current = null;
+    }
+  };
+
   // Save / Load logic
   const saveGame = (
-    updatedFields?: Partial<{
+    overrideFields?: Partial<{
       gems: number;
       currentFloorIndex: number;
       currentEnemyIndex: number;
@@ -162,96 +147,97 @@ export default function App() {
       floors: Floor[];
     }>
   ) => {
-    if (!userPass) return;
-    const saveData = {
+    if (!userTag) return;
+    const dataToSave = {
       userTag,
       userPass,
-      gems: updatedFields?.gems ?? gems,
-      currentFloorIndex: updatedFields?.currentFloorIndex ?? currentFloorIndex,
-      currentEnemyIndex: updatedFields?.currentEnemyIndex ?? currentEnemyIndex,
-      isHomeUnlocked: updatedFields?.isHomeUnlocked ?? isHomeUnlocked,
-      playerSelectableMonsters: updatedFields?.playerSelectableMonsters ?? playerSelectableMonsters,
-      player: updatedFields?.player ?? player,
-      floors: updatedFields?.floors ?? floors,
+      gems: overrideFields?.gems !== undefined ? overrideFields.gems : gems,
+      currentFloorIndex:
+        overrideFields?.currentFloorIndex !== undefined
+          ? overrideFields.currentFloorIndex
+          : currentFloorIndex,
+      currentEnemyIndex:
+        overrideFields?.currentEnemyIndex !== undefined
+          ? overrideFields.currentEnemyIndex
+          : currentEnemyIndex,
+      isHomeUnlocked:
+        overrideFields?.isHomeUnlocked !== undefined
+          ? overrideFields.isHomeUnlocked
+          : isHomeUnlocked,
+      playerSelectableMonsters:
+        overrideFields?.playerSelectableMonsters || playerSelectableMonsters,
+      player: overrideFields?.player || player,
+      floors: overrideFields?.floors || floors,
     };
     try {
-      localStorage.setItem(`rpg_save_${userTag}`, JSON.stringify(saveData));
+      localStorage.setItem(`monster_rpg_save_${userTag}`, JSON.stringify(dataToSave));
     } catch {
-      // Ignore if localStorage quota exceeded
+      // ignore
     }
   };
 
-  const loadGame = (tag: string) => {
-    const data = localStorage.getItem(`rpg_save_${tag}`);
-    if (!data) return null;
+  const loadGameData = (tag: string) => {
+    const raw = localStorage.getItem(`monster_rpg_save_${tag}`);
+    if (!raw) return null;
     try {
-      return JSON.parse(data);
+      return JSON.parse(raw);
     } catch {
       return null;
     }
   };
 
-  const stopEnemyTimer = () => {
-    if (enemyTimerRef.current) {
-      clearInterval(enemyTimerRef.current);
-      enemyTimerRef.current = null;
-    }
-  };
+  // Login handler
+  const handleLogin = () => {
+    const tag = playerTagInput.trim();
+    const pass = playerPassInput.trim();
 
-  // Login / Name Tag submission
-  const submitNameTag = () => {
-    const tagInput = playerTagInput.trim();
-    const passInput = playerPassInput.trim();
-
-    if (!tagInput) {
+    if (!tag) {
       alert('ネームタグを入力してください！');
       return;
     }
 
-    setUserTag(tagInput);
-    setUserPass(passInput);
+    setUserTag(tag);
+    setUserPass(pass);
 
-    const savedData = loadGame(tagInput);
-
-    if (savedData) {
-      if (savedData.userPass !== passInput) {
-        alert('パスワードが違います！');
+    const saved = loadGameData(tag);
+    if (saved) {
+      if (saved.userPass && saved.userPass !== pass) {
+        alert('パスワードが一致しません！');
         return;
       }
-      const loadedGems = savedData.gems || 0;
+      const loadedGems = saved.gems || 0;
       setGems(loadedGems);
-      setCurrentFloorIndex(savedData.currentFloorIndex || 0);
-      setCurrentEnemyIndex(savedData.currentEnemyIndex || 0);
-      setIsHomeUnlocked(savedData.isHomeUnlocked || false);
-      setPlayerSelectableMonsters(savedData.playerSelectableMonsters || DEFAULT_PLAYER_SELECTABLE_MONSTERS);
-      setPlayer(savedData.player);
-      if (savedData.floors) setFloors(savedData.floors);
+      setCurrentFloorIndex(saved.currentFloorIndex || 0);
+      setCurrentEnemyIndex(saved.currentEnemyIndex || 0);
+      setIsHomeUnlocked(saved.isHomeUnlocked ?? true);
+      const loadedMonsters = saved.playerSelectableMonsters || DEFAULT_PLAYER_SELECTABLE_MONSTERS;
+      setPlayerSelectableMonsters(loadedMonsters);
+      if (saved.player) setPlayer(saved.player);
+      if (saved.floors) setFloors(saved.floors);
 
-      setCurrentScreen('game');
-      addLog(`💾 **セーブデータからロード完了！ (所持💎: ${loadedGems}個 / 第${(savedData.currentFloorIndex || 0) + 1}階層)**`);
-      loadEnemy(
-        savedData.currentFloorIndex || 0,
-        savedData.currentEnemyIndex || 0,
-        savedData.floors || floors
-      );
+      setCurrentScreen('home');
+      addHomeLog(`💾 **「${tag}」のセーブデータを読み込みました！ (所持💎: ${loadedGems}個)**`);
     } else {
       setGems(0);
       setCurrentScreen('setup');
     }
   };
 
-  // Select monster
-  const selectMonster = (name: string, hp: number, atk: number, type: AbilityType) => {
+  // Select monster to start
+  const handleSelectMonster = (m: MonsterProfile) => {
     const newPlayer: Player = {
-      name,
-      hp,
-      maxHp: hp,
-      atk,
+      name: m.name,
+      hp: m.hp,
+      maxHp: m.hp,
+      atk: m.atk,
       sp: 0,
-      type,
+      type: m.type,
       status: null,
       hasRevived: false,
       deathZombies: 0,
+      level: m.level || 1,
+      maxLevel: m.maxLevel || 10,
+      rank: m.rank,
     };
     setPlayer(newPlayer);
     setCurrentFloorIndex(0);
@@ -262,12 +248,12 @@ export default function App() {
     setIsGameOver(false);
     setCurrentScreen('game');
 
-    addLog(`【ゲーム開始】 ${userTag} は ${name} を選んだ！`);
+    addLog(`【ゲーム開始】 ${userTag} は相棒「${m.name}」を選んだ！`);
     loadEnemy(0, 0, floors, newPlayer);
     saveGame({ player: newPlayer, currentFloorIndex: 0, currentEnemyIndex: 0 });
   };
 
-  // Enemy timer behavior
+  // Enemy timer
   const startEnemyTimer = (targetEnemy: Enemy) => {
     stopEnemyTimer();
 
@@ -276,32 +262,21 @@ export default function App() {
         setEnemy((currEnemy) => {
           setPlayer((currPlayer) => {
             if (currEnemy.hp <= 0 || currPlayer.hp <= 0) return currPlayer;
-
-            addLog(`🧪 ${currEnemy.name} はドラッグを飲んだ！`);
+            addLog(`🧪 ${currEnemy.name} はドラッグを服用した！`);
             if (Math.random() < 0.75) {
               const newHp = Math.min(currEnemy.maxHp, currEnemy.hp + 20);
               const turns = getRandomInt(3, 4);
               const newAtk = currEnemy.baseAtk + 4;
-              addLog(`HPが 20 回復し、攻撃力が 4 アップした！（${turns}ターン持続）`);
-              setEnemy({
-                ...currEnemy,
-                hp: newHp,
-                atk: newAtk,
-                buffTurns: turns,
-              });
+              addLog(`HPが 20 回復し、攻撃力が 4 上昇！（${turns}ターン持続）`);
+              setEnemy({ ...currEnemy, hp: newHp, atk: newAtk, buffTurns: turns });
             } else {
               const newHp = Math.max(0, currEnemy.hp - 15);
               const turns = getRandomInt(3, 4);
               const newAtk = Math.max(1, currEnemy.baseAtk - 5);
-              addLog(`💀 悪影響！ HPが 15 減少し、攻撃力が 5 下がった！（${turns}ターン持続）`);
-              setEnemy({
-                ...currEnemy,
-                hp: newHp,
-                atk: newAtk,
-                buffTurns: turns,
-              });
+              addLog(`💀 悪影響！ HPが 15 低下し、攻撃力が 5 下がった！（${turns}ターン持続）`);
+              setEnemy({ ...currEnemy, hp: newHp, atk: newAtk, buffTurns: turns });
               if (newHp <= 0) {
-                setTimeout(() => checkEnemyDefeated(currEnemy.name, currEnemy.bossType), 100);
+                setTimeout(() => handleEnemyDefeated(currEnemy.name, currEnemy.bossType), 100);
               }
             }
             return currPlayer;
@@ -314,14 +289,13 @@ export default function App() {
         setEnemy((currEnemy) => {
           setPlayer((currPlayer) => {
             if (currEnemy.hp <= 0 || currPlayer.hp <= 0) return currPlayer;
-
-            addLog(`✨ ${currEnemy.name} は回復を試みた！`);
+            addLog(`✨ ${currEnemy.name} は自己回復の魔力を練り上げた！`);
             if (Math.random() < 0.5) {
               const newHp = Math.min(currEnemy.maxHp, currEnemy.hp + 20);
               addLog(`成功！ HPが 20 回復した！`);
               setEnemy({ ...currEnemy, hp: newHp });
             } else {
-              addLog(`しかし失敗した…`);
+              addLog(`しかし集中が途切れて失敗した…`);
             }
             return currPlayer;
           });
@@ -333,23 +307,42 @@ export default function App() {
         setEnemy((currEnemy) => {
           setPlayer((currPlayer) => {
             if (currEnemy.hp <= 0 || currPlayer.hp <= 0) return currPlayer;
-
-            addLog(`🦬 ${currEnemy.name} の突進攻撃！`);
+            addLog(`🦬 ${currEnemy.name} の猛烈な突進攻撃！`);
             if (Math.random() < 0.25) {
               const nextHp = Math.max(0, currPlayer.hp - 25);
-              addLog(`激突！ ${currPlayer.name} は 25 ダメージを受けた！`);
+              addLog(`直撃！ ${currPlayer.name} は 25 ダメージを受けた！`);
               if (nextHp <= 0) {
-                setTimeout(() => handlePlayerDeath(), 100);
+                setTimeout(() => handlePlayerDefeat(), 100);
               }
               return { ...currPlayer, hp: nextHp };
             } else {
-              addLog(`しかし交わされた！`);
+              addLog(`しかし間一髪で回避した！`);
             }
             return currPlayer;
           });
           return currEnemy;
         });
       }, 10000);
+    } else if (targetEnemy.type === 'obadora') {
+      enemyTimerRef.current = setInterval(() => {
+        setEnemy((currEnemy) => {
+          setPlayer((currPlayer) => {
+            if (currEnemy.hp <= 0 || currPlayer.hp <= 0) return currPlayer;
+            addLog(`🌑 ${currEnemy.name} の「深淵のアビス」が発動した！`);
+            const nextHp = Math.max(0, currPlayer.hp - 15);
+            addLog(`${currPlayer.name} は闇の波動で 15 ダメージを受け、拘束された！`);
+            if (nextHp <= 0) {
+              setTimeout(() => handlePlayerDefeat(), 100);
+            }
+            return {
+              ...currPlayer,
+              hp: nextHp,
+              status: { type: 'bind', turns: 2 },
+            };
+          });
+          return currEnemy;
+        });
+      }, 15000);
     }
   };
 
@@ -357,7 +350,7 @@ export default function App() {
     floorIdx = currentFloorIndex,
     enemyIdx = currentEnemyIndex,
     floorList = floors,
-    _playerObj = player
+    _playerRef = player
   ) => {
     const floorData = floorList[floorIdx];
     if (!floorData || !floorData.enemies[enemyIdx]) return;
@@ -376,13 +369,13 @@ export default function App() {
     };
 
     setEnemy(newEnemy);
-    const bossTag = newEnemy.bossType ? `【${newEnemy.bossType}】` : '';
-    addLog(`＞ ${bossTag}${newEnemy.name} が現れた！`);
+    const bossBadge = newEnemy.bossType ? `【${newEnemy.bossType}】` : '';
+    addLog(`＞ ${bossBadge}${newEnemy.name} が立ちはだかった！`);
     setControlsDisabled(false);
     startEnemyTimer(newEnemy);
   };
 
-  // Player action handler
+  // Player attack & skill actions
   const handlePlayerAction = (actionType: 'attack' | 'heal_skill' | 'atk_skill') => {
     setControlsDisabled(true);
 
@@ -399,14 +392,14 @@ export default function App() {
 
       if (nextPlayer.type === 'ゾンビ') {
         if (nextPlayer.deathZombies <= 0) {
-          addLog(`デスゾンビがいません！発動に失敗しました。`);
+          addLog(`デスゾンビがいません！発動に失敗した。`);
           setControlsDisabled(false);
           return;
         }
         nextPlayer.sp -= cost;
         nextPlayer.deathZombies--;
         nextPlayer.hp = Math.min(nextPlayer.maxHp, nextPlayer.hp + 30);
-        addLog(`🧟 ${nextPlayer.name}の「ゾーンビー」！ デスゾンビを1体食べてHPが 30 回復した！`);
+        addLog(`🧟 ${nextPlayer.name}の「ゾーンビー」！ デスゾンビを喰らって HPが 30 回復した！`);
       } else {
         nextPlayer.sp -= cost;
         if (nextPlayer.type === 'ラリ') {
@@ -416,13 +409,13 @@ export default function App() {
           nextPlayer.hp = Math.min(nextPlayer.maxHp, nextPlayer.hp + 20);
           addLog(`${nextPlayer.name}の「ライフフルーツ」！ HPが 20 回復した！`);
         } else if (nextPlayer.type === 'ドレイム') {
-          const newMaxHp = getRandomInt(90, 120);
-          nextPlayer.maxHp = newMaxHp;
-          nextPlayer.hp = newMaxHp;
-          addLog(`🔥 ${nextPlayer.name}の「ファイアハート」！ 最大HPが ${newMaxHp} に増え、全回復した！`);
+          const newMax = getRandomInt(90, 120);
+          nextPlayer.maxHp = newMax;
+          nextPlayer.hp = newMax;
+          addLog(`🔥 ${nextPlayer.name}の「ファイアハート」！ 最大HPが ${newMax} に増加し全快！`);
         } else {
-          nextPlayer.hp = Math.min(nextPlayer.maxHp, nextPlayer.hp + 20);
-          addLog(`${nextPlayer.name}の回復スキル！ HPが 20 回復した！`);
+          nextPlayer.hp = Math.min(nextPlayer.maxHp, nextPlayer.hp + 25);
+          addLog(`${nextPlayer.name}の「ハイポーション」！ HPが 25 回復した！`);
         }
       }
     } else if (actionType === 'atk_skill') {
@@ -444,286 +437,217 @@ export default function App() {
       if (nextPlayer.type === 'ラリ') {
         addLog(`${nextPlayer.name}の「抱きつく」！`);
         nextEnemy.status = { type: 'confused', turns: 999 };
-        addLog(`${nextEnemy.name} は困惑した！`);
+        addLog(`${nextEnemy.name} は混乱に陥った！`);
       } else if (nextPlayer.type === 'オルゴン') {
         addLog(`${nextPlayer.name}の「ダークアイス」！`);
         if (Math.random() < 0.45) {
-          const turns = getRandomInt(2, 4);
-          nextEnemy.status = { type: 'frozen', turns };
-          addLog(`${nextEnemy.name} は凍結した！（${turns}ターン持続）`);
+          nextEnemy.status = { type: 'frozen', turns: 2 };
+          addLog(`極寒の冷気！ ${nextEnemy.name} を 2ターン 凍結させた！`);
         } else {
-          addLog(`しかし凍結しなかった…`);
+          addLog(`追加の凍結付与には失敗した。`);
         }
+        nextEnemy.hp = Math.max(0, nextEnemy.hp - nextPlayer.atk);
+        addLog(`${nextEnemy.name} に ${nextPlayer.atk} ダメージ！`);
       } else if (nextPlayer.type === 'ドレイム') {
         addLog(`${nextPlayer.name}の「ドットフレイム」！`);
-        const turns = getRandomInt(2, 4);
-        nextEnemy.status = { type: 'burned', turns };
-        addLog(`${nextEnemy.name} は火傷を負った！（${turns}ターン持続）`);
+        nextEnemy.status = { type: 'burned', turns: 3 };
+        addLog(`烈火の炎！ ${nextEnemy.name} は 3ターン 火傷状態になった！`);
+        nextEnemy.hp = Math.max(0, nextEnemy.hp - nextPlayer.atk);
+        addLog(`${nextEnemy.name} に ${nextPlayer.atk} ダメージ！`);
       } else if (nextPlayer.type === 'ゾンビ') {
-        addLog(`☣️ ${nextPlayer.name}の「感染」！`);
+        addLog(`🧟 ${nextPlayer.name}の「感染」！`);
         if (Math.random() < 0.01) {
           nextEnemy.hp = 0;
-          addLog(`☠️ 一撃必殺！ 1%の確率が発動し、${nextEnemy.name} を一瞬で葬り去った！`);
+          addLog(`💀 奇跡の即死発動！ ${nextEnemy.name} は一撃で息絶えた！`);
         } else {
           nextPlayer.deathZombies++;
-          addLog(`感染により、デスゾンビを1体召喚した！（所持数: ${nextPlayer.deathZombies}）`);
+          addLog(`感染が広がり、デスゾンビを 1体 召喚した！（合計: ${nextPlayer.deathZombies}体）`);
         }
       } else {
-        const dmg = Math.floor(nextPlayer.atk * 1.5);
+        const dmg = Math.round(nextPlayer.atk * 1.5);
         nextEnemy.hp = Math.max(0, nextEnemy.hp - dmg);
-        addLog(`${nextPlayer.name}の強力攻撃！ ${nextEnemy.name}に ${dmg} のダメージ。`);
+        addLog(`⚔️ ${nextPlayer.name}のパワースラッシュ！ ${nextEnemy.name} に ${dmg} ダメージ！`);
       }
-    } else if (actionType === 'attack') {
+    } else {
+      // Normal attack
+      addLog(`${nextPlayer.name} のこうげき！`);
       nextEnemy.hp = Math.max(0, nextEnemy.hp - nextPlayer.atk);
-      addLog(`${nextPlayer.name}の攻撃！ ${nextEnemy.name}に ${nextPlayer.atk} のダメージ。`);
+      addLog(`${nextEnemy.name} に ${nextPlayer.atk} ダメージ！`);
     }
 
-    nextPlayer.sp += 2;
+    nextPlayer.sp += 1;
     setPlayer(nextPlayer);
     setEnemy(nextEnemy);
 
     if (nextEnemy.hp <= 0) {
-      checkEnemyDefeated(nextEnemy.name, nextEnemy.bossType);
+      handleEnemyDefeated(nextEnemy.name, nextEnemy.bossType);
       return;
     }
 
     setTimeout(() => {
-      runEnemyTurn(nextPlayer, nextEnemy);
-    }, 500);
+      executeEnemyTurn(nextPlayer, nextEnemy);
+    }, 600);
   };
 
-  const runEnemyTurn = (currentPlayer: Player, currentEnemy: Enemy) => {
-    let p = { ...currentPlayer };
-    let e = { ...currentEnemy };
-    let isFrozenSkipped = false;
+  const executeEnemyTurn = (currPlayer: Player, currEnemy: Enemy) => {
+    let nextP = { ...currPlayer };
+    let nextE = { ...currEnemy };
 
-    // Buff turns
-    if (e.buffTurns > 0) {
-      e.buffTurns--;
-      if (e.buffTurns <= 0) {
-        e.atk = e.baseAtk;
-        addLog(`${e.name} のバフ/デバフ効果が切れた。`);
+    // Burn check on enemy
+    if (nextE.status?.type === 'burned') {
+      nextE.hp = Math.max(0, nextE.hp - 2);
+      addLog(`🔥 火傷のダメージ！ ${nextE.name} は 2 ダメージを受けた！`);
+      nextE.status.turns -= 1;
+      if (nextE.status.turns <= 0) {
+        nextE.status = null;
+        addLog(`${nextE.name} の火傷がおさまった。`);
       }
-    }
-
-    // Player burn
-    if (p.status && p.status.type === 'burned') {
-      p.hp = Math.max(0, p.hp - 2);
-      p.status.turns--;
-      addLog(`[火傷] ${p.name} は火傷で 2 ダメージ！`);
-      if (p.status.turns <= 0) {
-        p.status = null;
-        addLog(`${p.name} の火傷が治った。`);
-      }
-      if (p.hp <= 0) {
-        setPlayer(p);
-        setEnemy(e);
-        handlePlayerDeath(p);
+      setEnemy({ ...nextE });
+      if (nextE.hp <= 0) {
+        handleEnemyDefeated(nextE.name, nextE.bossType);
         return;
       }
     }
 
-    // Enemy status effect
-    if (e.status) {
-      if (e.status.type === 'burned') {
-        e.hp = Math.max(0, e.hp - 2);
-        e.status.turns--;
-        addLog(`[火傷] ${e.name} は火傷で 2 ダメージ！`);
-        if (e.status.turns <= 0) {
-          e.status = null;
-          addLog(`${e.name} の火傷が治った。`);
-        }
-      } else if (e.status.type === 'frozen') {
-        if (Math.random() < 0.5) {
-          e.hp = Math.max(0, e.hp - 5);
-          addLog(`[凍結] ${e.name} は氷結の痛みに耐えている！ 5 ダメージ！`);
-        } else {
-          isFrozenSkipped = true;
-          addLog(`[凍結] ${e.name} は凍りついて動けない！`);
-        }
-        e.status.turns--;
-        if (e.status.turns <= 0) {
-          e.status = null;
-          addLog(`${e.name} の凍結が解けた。`);
-        }
+    // Freeze check on enemy
+    if (nextE.status?.type === 'frozen') {
+      addLog(`❄️ ${nextE.name} は凍りついて行動できない！`);
+      nextE.status.turns -= 1;
+      if (nextE.status.turns <= 0) {
+        nextE.status = null;
+        addLog(`${nextE.name} の氷が溶けた！`);
       }
-    }
-
-    if (e.hp <= 0) {
-      setPlayer(p);
-      setEnemy(e);
-      checkEnemyDefeated(e.name, e.bossType);
+      setEnemy({ ...nextE });
+      finishTurnCycle(nextP);
       return;
     }
 
-    if (isFrozenSkipped) {
-      finishEnemyTurn(p, e);
-      return;
-    }
-
-    // Enemy confused
-    if (e.status && e.status.type === 'confused') {
-      if (Math.random() < 0.3) {
-        e.hp = Math.max(0, e.hp - e.atk);
-        addLog(`[困惑] ${e.name} は困惑して自分自身を攻撃した！ ${e.atk} のダメージ！`);
-        if (e.hp <= 0) {
-          setPlayer(p);
-          setEnemy(e);
-          checkEnemyDefeated(e.name, e.bossType);
+    // Confusion check on enemy
+    if (nextE.status?.type === 'confused') {
+      if (Math.random() < 0.5) {
+        addLog(`🌀 ${nextE.name} は混乱して自分を攻撃した！`);
+        nextE.hp = Math.max(0, nextE.hp - nextE.atk);
+        addLog(`${nextE.name} は自らに ${nextE.atk} ダメージ！`);
+        setEnemy({ ...nextE });
+        if (nextE.hp <= 0) {
+          handleEnemyDefeated(nextE.name, nextE.bossType);
           return;
         }
-        finishEnemyTurn(p, e);
+        finishTurnCycle(nextP);
         return;
       }
     }
 
-    // Enemy attack
-    if (e.type === 'obadora') {
-      addLog(`👁️ ${e.name} の「アビス」！`);
-      const rand = Math.random();
-      if (rand < 0.25) {
-        const turns = getRandomInt(3, 5);
-        p.status = { type: 'bind', turns };
-        addLog(`⛓️ ${p.name} は拘束された！（${turns}ターン行動不能）`);
-      } else if (rand < 0.75) {
-        const turns = getRandomInt(2, 4);
-        p.status = { type: 'burned', turns };
-        addLog(`🔥 ${p.name} は火傷を負った！`);
-      } else {
-        const dmg = getRandomInt(10, 17);
-        p.hp = Math.max(0, p.hp - dmg);
-        addLog(`⚰️ 〈棺桶をぶつける〉！ ${p.name}に ${dmg} のダメージ！`);
+    // Enemy attacks player
+    addLog(`＞ ${nextE.name} の攻撃！`);
+    let finalDmg = nextE.atk;
+    nextP.hp = Math.max(0, nextP.hp - finalDmg);
+    addLog(`${nextP.name} は ${finalDmg} ダメージを受けた！`);
+
+    // Buff turns decay
+    if (nextE.buffTurns > 0) {
+      nextE.buffTurns -= 1;
+      if (nextE.buffTurns === 0) {
+        nextE.atk = nextE.baseAtk;
+        addLog(`${nextE.name} の薬品バフ・弱体効果が切れた。`);
       }
-    } else {
-      p.hp = Math.max(0, p.hp - e.atk);
-      addLog(`${e.name}の攻撃！ ${p.name}は ${e.atk} のダメージ。`);
+      setEnemy({ ...nextE });
     }
 
-    if (p.hp <= 0) {
-      setPlayer(p);
-      setEnemy(e);
-      handlePlayerDeath(p);
+    if (nextP.hp <= 0) {
+      setPlayer(nextP);
+      handlePlayerDefeat();
       return;
     }
 
-    finishEnemyTurn(p, e);
+    finishTurnCycle(nextP);
   };
 
-  const handlePlayerDeath = (targetPlayer = player) => {
-    if (targetPlayer.type === 'ゾンビ' && !targetPlayer.hasRevived) {
-      const revivedPlayer = { ...targetPlayer, hasRevived: true, hp: targetPlayer.maxHp };
-      setPlayer(revivedPlayer);
-      addLog(`💀 倒れた… しかし！【起死回生】が発動！ ${revivedPlayer.name} は全回復で蘇った！`);
+  const finishTurnCycle = (pState: Player) => {
+    let nextP = { ...pState };
+    if (nextP.status?.type === 'bind') {
+      nextP.status.turns -= 1;
+      if (nextP.status.turns <= 0) {
+        nextP.status = null;
+        addLog(`${nextP.name} の拘束が解けた！`);
+      }
+    }
+    setPlayer(nextP);
+    setControlsDisabled(false);
+  };
+
+  const handleEnemyDefeated = (enemyName: string, bossType: string) => {
+    stopEnemyTimer();
+    addLog(`💥 **${enemyName} を倒した！**`);
+
+    let currentG = gems;
+    if (bossType && bossType in BOSS_REWARDS) {
+      const reward = BOSS_REWARDS[bossType as keyof typeof BOSS_REWARDS];
+      currentG += reward;
+      setGems(currentG);
+      addLog(`💎 **【ボス撃破ボーナス】 ダイヤを ${reward}個 獲得した！（合計: 💎${currentG}個）**`);
+    }
+
+    const currentFloor = floors[currentFloorIndex];
+    const isLastEnemyOnFloor = currentEnemyIndex + 1 >= currentFloor.enemies.length;
+
+    if (isLastEnemyOnFloor) {
+      // Floor clear reward!
+      const floorReward = currentFloor.clearRewardGems ?? (currentFloorIndex + 1) * 15;
+      currentG += floorReward;
+      setGems(currentG);
+      addLog(`🏆 **【階層制覇報酬】 第${currentFloorIndex + 1}階層クリア！ ダイヤ 💎${floorReward}個 を獲得！**`);
+
+      setIsHomeUnlocked(true);
+      setShowHomeBtn(true);
+
+      const isFinalFloor = currentFloorIndex + 1 >= floors.length;
+      if (isFinalFloor) {
+        addLog(`🎉🎉 **おめでとうございます！ 全ダンジョンを完全制覇しました！！** 🎉🎉`);
+        setIsGameOver(true);
+      } else {
+        setShowNextBtn(true);
+      }
+    } else {
+      setShowNextBtn(true);
+    }
+
+    saveGame({ gems: currentG, isHomeUnlocked: true });
+    setControlsDisabled(true);
+  };
+
+  const handlePlayerDefeat = () => {
+    stopEnemyTimer();
+    if (player.type === 'ゾンビ' && !player.hasRevived) {
+      addLog(`💀 ${player.name} は倒れた…！`);
+      addLog(`🧟 しかし不死の力により、HP 20 で蘇生した！！`);
+      setPlayer((p) => ({ ...p, hp: 20, hasRevived: true }));
       setControlsDisabled(false);
       return;
     }
-    handleGameOver(targetPlayer.name);
-  };
 
-  const finishEnemyTurn = (p: Player, e: Enemy) => {
-    let updatedPlayer = { ...p };
-
-    if (updatedPlayer.status && updatedPlayer.status.type === 'bind') {
-      updatedPlayer.status.turns--;
-      if (updatedPlayer.status.turns <= 0) {
-        updatedPlayer.status = null;
-        addLog(`${updatedPlayer.name} の拘束が解けた！`);
-      } else {
-        addLog(`[拘束] ${updatedPlayer.name} は拘束されていて動けない！（残り${updatedPlayer.status.turns}ターン）`);
-      }
-    }
-
-    setPlayer(updatedPlayer);
-    setEnemy(e);
-
-    setTimeout(() => {
-      if (updatedPlayer.hp > 0 && e.hp > 0) {
-        if (updatedPlayer.status && updatedPlayer.status.type === 'bind') {
-          runEnemyTurn(updatedPlayer, e);
-        } else {
-          setControlsDisabled(false);
-        }
-      }
-    }, 500);
-  };
-
-  const handleGameOver = (playerName = player.name) => {
-    stopEnemyTimer();
-    addLog(`💀 ${playerName} は倒れてしまった… GAME OVER`);
+    addLog(`💀 **${player.name} は力尽きた… ゲームオーバー！**`);
     setIsGameOver(true);
+    setControlsDisabled(true);
   };
 
-  const checkEnemyDefeated = (enemyName: string, bossType: BossType) => {
-    stopEnemyTimer();
-    addLog(`★ ${enemyName} を倒した！`);
-
-    let newGems = gems;
-    if (bossType && BOSS_REWARDS[bossType]) {
-      const reward = BOSS_REWARDS[bossType];
-      newGems += reward;
-      setGems(newGems);
-      addLog(`💎 **【${bossType}撃破報酬】 ダイヤを ${reward} 個獲得！ (合計: ${newGems}個)**`);
-    }
-
-    let unlockedHome = isHomeUnlocked;
-    if (currentFloorIndex === 2 && enemyName === 'フレアスライム') {
-      unlockedHome = true;
-      setIsHomeUnlocked(true);
-      addLog(`✨ **第3階層クリア！ ホーム機能が解放されました！**`);
-    }
-
-    const nextEnemyIdx = currentEnemyIndex + 1;
-    if (nextEnemyIdx < floors[currentFloorIndex].enemies.length) {
+  const handleNextStage = () => {
+    setShowNextBtn(false);
+    setShowHomeBtn(false);
+    const currFloor = floors[currentFloorIndex];
+    if (currentEnemyIndex + 1 < currFloor.enemies.length) {
+      const nextEnemyIdx = currentEnemyIndex + 1;
       setCurrentEnemyIndex(nextEnemyIdx);
-      saveGame({
-        gems: newGems,
-        currentEnemyIndex: nextEnemyIdx,
-        isHomeUnlocked: unlockedHome,
-      });
-      setTimeout(() => {
-        loadEnemy(currentFloorIndex, nextEnemyIdx);
-      }, 500);
+      loadEnemy(currentFloorIndex, nextEnemyIdx);
+      saveGame({ currentEnemyIndex: nextEnemyIdx });
     } else {
       const nextFloorIdx = currentFloorIndex + 1;
       setCurrentFloorIndex(nextFloorIdx);
       setCurrentEnemyIndex(0);
-      saveGame({
-        gems: newGems,
-        currentFloorIndex: nextFloorIdx,
-        currentEnemyIndex: 0,
-        isHomeUnlocked: unlockedHome,
-      });
-
-      if (nextFloorIdx < floors.length) {
-        if (unlockedHome) setShowHomeBtn(true);
-        setShowNextBtn(true);
-      } else {
-        addLog('🎉 **ダンジョン全階層制覇！おめでとうございます！**');
-        setIsGameOver(true);
-      }
+      addLog(`⏩ **【${floors[nextFloorIdx]?.name || '新階層'}】へ進んだ！**`);
+      loadEnemy(nextFloorIdx, 0);
+      saveGame({ currentFloorIndex: nextFloorIdx, currentEnemyIndex: 0 });
     }
-  };
-
-  const goToHome = () => {
-    stopEnemyTimer();
-    const healedPlayer: Player = { ...player, hp: player.maxHp, status: null };
-    setPlayer(healedPlayer);
-    setCurrentScreen('home');
-    setHomeLogs([`🏠 ホームに戻りました。 ${healedPlayer.name} のHPが全回復しました！`]);
-    saveGame({ player: healedPlayer });
-  };
-
-  const returnToDungeon = () => {
-    setCurrentScreen('game');
-    setShowHomeBtn(false);
-    setShowNextBtn(false);
-    loadEnemy(currentFloorIndex, 0);
-  };
-
-  const nextStage = () => {
-    setShowNextBtn(false);
-    setShowHomeBtn(false);
-    loadEnemy(currentFloorIndex, 0);
   };
 
   const handleRestart = () => {
@@ -732,232 +656,258 @@ export default function App() {
     setIsGameOver(false);
     setShowNextBtn(false);
     setShowHomeBtn(false);
-    setControlsDisabled(false);
+    setLogs([]);
   };
 
   // Gacha logic
-  const drawGacha = (count: number) => {
-    const cost = count === 10 ? 480 : 50;
+  const handleDrawGacha = (count: 1 | 10) => {
+    const cost = count === 1 ? 50 : 480;
     if (gems < cost) {
-      addHomeLog(`❌ ダイヤが足りません！（所持: 💎${gems} / 必要: 💎${cost}）`);
+      alert(`ダイヤが足りません！（必要ダイヤ: 💎${cost}個 / 所持: 💎${gems}個）`);
       return;
     }
 
-    const nextGems = gems - cost;
-    setGems(nextGems);
-    addHomeLog(`✨ **ガチャを ${count} 回引きました！ (消費: 💎${cost}個)**`);
-
-    let newMonsters = [...playerSelectableMonsters];
+    let remainingGems = gems - cost;
+    const pulledResults: GachaPullResult[] = [];
+    let totalRefund = 0;
+    let updatedRoster = [...playerSelectableMonsters];
 
     for (let i = 0; i < count; i++) {
       const rand = Math.random() * 100;
-      let rank: 'UR' | 'SSR' | 'SR' | 'R' | 'N' = 'N';
-      if (rand < gachaRates.UR) rank = 'UR';
-      else if (rand < gachaRates.UR + gachaRates.SSR) rank = 'SSR';
-      else if (rand < gachaRates.UR + gachaRates.SSR + gachaRates.SR) rank = 'SR';
-      else if (rand < gachaRates.UR + gachaRates.SSR + gachaRates.SR + gachaRates.R) rank = 'R';
-      else rank = 'N';
+      let targetRank: 'UR' | 'SSR' | 'SR' | 'R' | 'N' = 'N';
 
-      const pool = gachaPool[rank];
-      if (!pool || pool.length === 0) {
-        addHomeLog(`🎁 [${rank}] 当選 (キャラクター未実装)`);
-        continue;
+      if (rand < gachaRates.UR) {
+        targetRank = 'UR';
+      } else if (rand < gachaRates.UR + gachaRates.SSR) {
+        targetRank = 'SSR';
+      } else if (rand < gachaRates.UR + gachaRates.SSR + gachaRates.SR) {
+        targetRank = 'SR';
+      } else if (rand < gachaRates.UR + gachaRates.SSR + gachaRates.SR + gachaRates.R) {
+        targetRank = 'R';
+      } else {
+        targetRank = 'N';
       }
 
-      const drawnChar = pool[Math.floor(Math.random() * pool.length)];
-      addHomeLog(`🎁 **[${rank}] ${drawnChar.name}** を獲得！`);
+      const pool = gachaPool[targetRank];
+      const picked = pool[Math.floor(Math.random() * pool.length)];
 
-      if (!newMonsters.some((m) => m.name === drawnChar.name)) {
-        newMonsters.push(drawnChar);
-        addHomeLog(`💡 新モンスター 『${drawnChar.name}』 が仲間になりました！`);
-      }
-    }
+      const existingIndex = updatedRoster.findIndex((m) => m.name === picked.name);
 
-    setPlayerSelectableMonsters(newMonsters);
-    saveGame({ gems: nextGems, playerSelectableMonsters: newMonsters });
-  };
-
-  const openEnhanceNotice = () => {
-    addHomeLog('🛠️ **強化機能は現在開発中です！今後のアップデートをお楽しみに！**');
-  };
-
-  // Admin Room functions
-  const checkAdminCode = () => {
-    if (adminCodeInput === ADMIN_CODE) {
-      setIsAdminLoggedIn(true);
-    } else {
-      alert('コードが間違っています。');
-    }
-  };
-
-  const adminFullHeal = () => {
-    const healed = { ...player, hp: player.maxHp, sp: player.sp + 10 };
-    setPlayer(healed);
-    saveGame({ player: healed });
-    addLog(`🔧 **[管理者コマンド] HPが全回復し、SPが+10されました！**`);
-    alert('プレイヤーを回復しました');
-  };
-
-  const adminAddGems = () => {
-    const val = parseInt(adminSetGems, 10);
-    if (isNaN(val)) return alert('数値を入力してください');
-    const newG = gems + val;
-    setGems(newG);
-    saveGame({ gems: newG });
-    addLog(`🔧 **[管理者コマンド] ダイヤを ${val} 個追加しました！ (合計: ${newG}個)**`);
-    alert(`ダイヤを ${val} 個追加しました`);
-    setAdminSetGems('');
-  };
-
-  const adminSetAtkValue = () => {
-    const val = parseInt(adminSetAtk, 10);
-    if (isNaN(val)) return alert('数値を入力してください');
-    const updated = { ...player, atk: val };
-    setPlayer(updated);
-    saveGame({ player: updated });
-    addLog(`🔧 **[管理者コマンド] 攻撃力を ${val} に書き換えました！**`);
-    alert(`攻撃力を ${val} にセットしました`);
-    setAdminSetAtk('');
-  };
-
-  const adminAddSelectableMonster = () => {
-    if (!adminCustomMName.trim()) return alert('名前を入力してください');
-    const newM: MonsterProfile = {
-      name: adminCustomMName.trim(),
-      hp: adminCustomMHp,
-      atk: adminCustomMAtk,
-      type: adminCustomMType,
-      rank: 'カスタム',
-    };
-    const updated = [...playerSelectableMonsters, newM];
-    setPlayerSelectableMonsters(updated);
-    saveGame({ playerSelectableMonsters: updated });
-    alert(`初期選択リストに ${newM.name} (タイプ:${newM.type}) を追加しました！`);
-    setAdminCustomMName('');
-  };
-
-  const updateGachaRates = () => {
-    if (isNaN(rateUrInput) || isNaN(rateSsrInput)) return alert('有効な数字を入力してください');
-    setGachaRates((prev) => ({
-      ...prev,
-      UR: rateUrInput,
-      SSR: rateSsrInput,
-    }));
-    alert(`ガチャ確率を更新しました (UR:${rateUrInput}%, SSR:${rateSsrInput}%)`);
-  };
-
-  const addCustomEnemy = () => {
-    if (!newEnemyName.trim()) return alert('名前を入力してください');
-    if (isNaN(newEnemyFloorSelect)) return alert('階層を選択してください');
-
-    const updatedFloors = floors.map((fl, idx) => {
-      if (idx === newEnemyFloorSelect) {
-        return {
-          ...fl,
-          enemies: [
-            ...fl.enemies,
-            {
-              name: newEnemyName.trim(),
-              hp: newEnemyHp,
-              atk: newEnemyAtk,
-              type: newEnemyType,
-              bossType: newEnemyBossType,
-            },
-          ],
+      if (existingIndex === -1) {
+        // New monster acquired!
+        const newMonster: MonsterProfile = {
+          ...picked,
+          level: 1,
+          maxLevel: RARITY_DEFAULT_MAX_LEVEL[picked.rank] || 10,
+          baseHp: picked.hp,
+          baseAtk: picked.atk,
         };
+        updatedRoster.push(newMonster);
+        pulledResults.push({
+          monster: newMonster,
+          isNew: true,
+          levelUp: false,
+          refundGems: 0,
+        });
+      } else {
+        // Duplicate monster
+        const existing = updatedRoster[existingIndex];
+        if (existing.level < existing.maxLevel) {
+          // Level Up!
+          const oldLevel = existing.level;
+          const newLevel = oldLevel + 1;
+          const updatedMonster = {
+            ...existing,
+            level: newLevel,
+            hp: existing.hp + Math.round(existing.baseHp * 0.15),
+            atk: existing.atk + Math.max(1, Math.round(existing.baseAtk * 0.15)),
+          };
+          updatedRoster[existingIndex] = updatedMonster;
+          pulledResults.push({
+            monster: updatedMonster,
+            isNew: false,
+            levelUp: true,
+            oldLevel,
+            newLevel,
+            refundGems: 0,
+          });
+        } else {
+          // Already at Max Level -> Diamond Refund!
+          const refund = RARITY_REFUND_GEMS[existing.rank] || 25;
+          totalRefund += refund;
+          remainingGems += refund;
+          pulledResults.push({
+            monster: existing,
+            isNew: false,
+            levelUp: false,
+            refundGems: refund,
+          });
+        }
       }
-      return fl;
-    });
+    }
 
-    setFloors(updatedFloors);
-    saveGame({ floors: updatedFloors });
-    alert(
-      `${floors[newEnemyFloorSelect]?.name} に ${newEnemyName.trim()} (タイプ: ${
-        newEnemyType || '通常'
-      }) を追加しました！`
+    setGems(remainingGems);
+    setPlayerSelectableMonsters(updatedRoster);
+    setGachaResults(pulledResults);
+    setGachaTotalRefund(totalRefund);
+    setIsGachaModalOpen(true);
+
+    addHomeLog(
+      `🎁 **${count === 1 ? '単発' : '10連'}ガチャを引きました！ (消費: 💎${cost}個 / 返還: 💎${totalRefund}個 / 残高: 💎${remainingGems}個)**`
     );
-    setNewEnemyName('');
+
+    saveGame({ gems: remainingGems, playerSelectableMonsters: updatedRoster });
   };
 
-  const addCustomGachaChar = () => {
-    if (!newGachaName.trim()) return alert('名前を入力してください');
-    const newChar: MonsterProfile = {
-      name: newGachaName.trim(),
-      hp: newGachaHp,
-      atk: newGachaAtk,
-      type: newGachaType,
-      rank: newGachaRank,
-    };
-    const updatedPool = {
-      ...gachaPool,
-      [newGachaRank]: [...(gachaPool[newGachaRank] || []), newChar],
-    };
-    setGachaPool(updatedPool);
-    alert(`ガチャプール [${newGachaRank}] に ${newChar.name} (タイプ:${newChar.type}) を追加しました！`);
-    setNewGachaName('');
+  // Diamond transfer between players
+  const handleTransferDiamonds = (targetTag: string, amount: number) => {
+    if (gems < amount) {
+      alert('所持ダイヤが足りません！');
+      return false;
+    }
+
+    const newSenderGems = gems - amount;
+    setGems(newSenderGems);
+
+    // Save to recipient save file if exists or create deposit
+    const recipientKey = `monster_rpg_save_${targetTag}`;
+    const rawTarget = localStorage.getItem(recipientKey);
+    if (rawTarget) {
+      try {
+        const parsed = JSON.parse(rawTarget);
+        parsed.gems = (parsed.gems || 0) + amount;
+        localStorage.setItem(recipientKey, JSON.stringify(parsed));
+      } catch {
+        // ignore
+      }
+    } else {
+      // Pending recipient save file
+      const initialData = {
+        userTag: targetTag,
+        userPass: '',
+        gems: amount,
+        currentFloorIndex: 0,
+        currentEnemyIndex: 0,
+        isHomeUnlocked: false,
+        playerSelectableMonsters: DEFAULT_PLAYER_SELECTABLE_MONSTERS,
+      };
+      localStorage.setItem(recipientKey, JSON.stringify(initialData));
+    }
+
+    saveGame({ gems: newSenderGems });
+    addHomeLog(`🎁 **【ダイヤ送金】 「${targetTag}」さんに 💎${amount}個 を送金しました！ (残高: 💎${newSenderGems}個)**`);
+    alert(`「${targetTag}」さんに 💎${amount}個 を送金しました！`);
+    return true;
   };
 
-  const addNewFloor = () => {
-    const num = floors.length + 1;
-    const newFloor: Floor = {
-      name: `第${num}階層`,
-      enemies: [{ name: 'カスタムモンスター', hp: 150, atk: 10 }],
+  // Enhance monster with diamonds
+  const handleEnhanceMonster = (idx: number, cost: number) => {
+    if (gems < cost) return;
+    const target = playerSelectableMonsters[idx];
+    if (!target || target.level >= target.maxLevel) return;
+
+    const newG = gems - cost;
+    const updated = [...playerSelectableMonsters];
+    const newL = target.level + 1;
+    const newHp = target.hp + Math.round(target.baseHp * 0.15);
+    const newAtk = target.atk + Math.max(1, Math.round(target.baseAtk * 0.15));
+
+    updated[idx] = {
+      ...target,
+      level: newL,
+      hp: newHp,
+      atk: newAtk,
     };
-    const updated = [...floors, newFloor];
-    setFloors(updated);
-    saveGame({ floors: updated });
-    alert(`第${num}階層 を追加しました！`);
+
+    setGems(newG);
+    setPlayerSelectableMonsters(updated);
+
+    // If active player is this monster, update player too
+    if (player.name === target.name) {
+      setPlayer((prev) => ({
+        ...prev,
+        level: newL,
+        maxHp: newHp,
+        hp: Math.min(newHp, prev.hp + Math.round(target.baseHp * 0.15)),
+        atk: newAtk,
+      }));
+    }
+
+    saveGame({ gems: newG, playerSelectableMonsters: updated });
+    addHomeLog(`⚔️ **「${target.name}」を強化！ Lv.${newL} にアップしました！ (消費: 💎${cost}個)**`);
   };
 
-  // Skill button texts
+  // Switch active monster in home
+  const handleSetActiveMonster = (m: MonsterProfile) => {
+    setPlayer({
+      name: m.name,
+      hp: m.hp,
+      maxHp: m.hp,
+      atk: m.atk,
+      sp: 0,
+      type: m.type,
+      status: null,
+      hasRevived: false,
+      deathZombies: 0,
+      level: m.level,
+      maxLevel: m.maxLevel,
+      rank: m.rank,
+    });
+    addHomeLog(`🐾 出撃相棒を「${m.name}」に変更しました！`);
+  };
+
   const getHealBtnText = () => {
-    if (player.type === 'ラリ') return '油を蓄える (消費SP2/回復10)';
-    if (player.type === 'オルゴン') return 'ライフフルーツ (消費SP2/回復20)';
-    if (player.type === 'ドレイム') return 'ファイアハート (消費SP7/全回復&最大HPUP)';
-    if (player.type === 'ゾンビ') return 'ゾーンビー (消費SP4/デスゾンビ消費でHP30回復)';
-    return '回復スキル (消費SP2/回復20)';
+    if (player.type === 'ラリ') return '油を蓄える (SP2/HP+10)';
+    if (player.type === 'オルゴン') return 'ライフフルーツ (SP2/HP+20)';
+    if (player.type === 'ドレイム') return 'ファイアハート (SP7/全快&HPUP)';
+    if (player.type === 'ゾンビ') return 'ゾーンビー (SP4/ゾンビ消費+30)';
+    return 'ハイポーション (SP2/HP+25)';
   };
 
   const getAtkSkillBtnText = () => {
-    if (player.type === 'ラリ') return '抱きつく (消費SP3/困惑)';
-    if (player.type === 'オルゴン') return 'ダークアイス (消費SP4/凍結)';
-    if (player.type === 'ドレイム') return 'ドットフレイム (消費SP1/火傷)';
-    if (player.type === 'ゾンビ') return '感染 (消費SP8/1%即死orデスゾンビ召喚)';
-    return '特殊攻撃スキル (消費SP3)';
+    if (player.type === 'ラリ') return '抱きつく (SP3/困惑付与)';
+    if (player.type === 'オルゴン') return 'ダークアイス (SP4/45%凍結)';
+    if (player.type === 'ドレイム') return 'ドットフレイム (SP1/火傷付与)';
+    if (player.type === 'ゾンビ') return '感染 (SP8/1%即死or召喚)';
+    return 'パワースラッシュ (SP3/強撃)';
   };
 
-  const getStatusEffectText = (status: StatusEffect | null) => {
-    if (!status) return 'なし';
-    if (status.type === 'bind') return `拘束 (残${status.turns}T)`;
-    if (status.type === 'burned') return `火傷 (残${status.turns}T)`;
-    if (status.type === 'confused') return '困惑';
-    if (status.type === 'frozen') return `凍結 (残${status.turns}T)`;
-    return 'なし';
+  const getStatusEffectText = (st: StatusEffect | null) => {
+    if (!st) return '正常';
+    if (st.type === 'bind') return `拘束 (残${st.turns}T)`;
+    if (st.type === 'burned') return `火傷 (残${st.turns}T)`;
+    if (st.type === 'confused') return '困惑';
+    if (st.type === 'frozen') return `凍結 (残${st.turns}T)`;
+    return '正常';
   };
 
   const isBtnDisabled = controlsDisabled || player.status?.type === 'bind';
 
   return (
-    <div className="flex justify-center items-center min-h-screen p-2.5 sm:p-4 select-none">
+    <div className="flex justify-center items-center min-h-screen p-2.5 sm:p-4 select-none bg-[#121212] text-white">
       <div
         id="game-container"
-        className="bg-[#1e1e1e] border-2 border-[#333] rounded-xl p-5 w-full max-w-[450px] shadow-[0_8px_24px_rgba(0,0,0,0.6)] relative"
+        className="bg-[#1e1e1e] border-2 border-[#333] rounded-2xl p-5 w-full max-w-[460px] shadow-[0_10px_30px_rgba(0,0,0,0.8)] relative"
       >
         <button
-          className="admin-btn absolute top-3.5 right-3.5 text-[10px] px-2 py-1 bg-[#444] hover:bg-[#555] text-white border border-[#555] rounded cursor-pointer"
+          className="absolute top-4 right-4 text-[10px] px-2 py-1 bg-[#333] hover:bg-[#444] text-[#ccc] border border-[#555] rounded cursor-pointer transition-colors"
           onClick={() => setIsAdminModalOpen(true)}
         >
-          管理者
+          ⚙️ 管理者
         </button>
-        <h1 className="text-center m-0 text-xl font-bold text-[#f0a500] border-b-2 border-[#333] pb-2.5">
-          階層ダンジョン
+
+        <h1 className="text-center m-0 text-xl font-black text-[#f0a500] border-b-2 border-[#333] pb-2.5 tracking-wide">
+          モンスターダンジョン RPG 完全版
         </h1>
 
         {/* 1. Login Screen */}
         {currentScreen === 'login' && (
-          <div id="login-screen" className="mt-4">
-            <div className="input-group text-left mb-3">
-              <label className="text-xs text-[#aaa] block mb-1">
+          <div className="mt-4">
+            <p className="text-xs text-[#aaa] text-center mb-3">
+              冒険者名を入力してダンジョンへ突入しましょう！
+            </p>
+            <div className="text-left mb-3">
+              <label className="text-xs text-[#bbb] block mb-1">
                 冒険者名（ネームタグ） <span className="text-[#ff5555]">*必須</span>
               </label>
               <input
@@ -965,46 +915,54 @@ export default function App() {
                 value={playerTagInput}
                 onChange={(e) => setPlayerTagInput(e.target.value)}
                 placeholder="例: 勇者ポテト"
-                className="w-full p-2.5 bg-[#2a2a2a] border border-[#555] text-white rounded-md text-sm outline-none focus:border-[#f0a500]"
+                className="w-full p-2.5 bg-[#2a2a2a] border border-[#555] text-white rounded-lg text-sm outline-none focus:border-[#f0a500]"
               />
             </div>
-            <div className="input-group text-left mb-3">
-              <label className="text-xs text-[#aaa] block mb-1">
-                パスワード <span className="text-[#888]">(任意: 設定するとセーブ機能が有効化)</span>
+            <div className="text-left mb-4">
+              <label className="text-xs text-[#bbb] block mb-1">
+                パスワード <span className="text-[#888]">(任意: セーブ保護用)</span>
               </label>
               <input
                 type="password"
                 value={playerPassInput}
                 onChange={(e) => setPlayerPassInput(e.target.value)}
-                placeholder="未入力でも開始可能"
-                className="w-full p-2.5 bg-[#2a2a2a] border border-[#555] text-white rounded-md text-sm outline-none focus:border-[#f0a500]"
+                placeholder="任意設定"
+                className="w-full p-2.5 bg-[#2a2a2a] border border-[#555] text-white rounded-lg text-sm outline-none focus:border-[#f0a500]"
               />
             </div>
             <button
-              onClick={submitNameTag}
-              className="w-full bg-[#27ae60] hover:bg-[#2ecc71] text-white font-bold p-2.5 rounded-md text-sm cursor-pointer transition-colors"
+              onClick={handleLogin}
+              className="w-full bg-[#27ae60] hover:bg-[#2ecc71] text-white font-bold p-3 rounded-xl text-sm cursor-pointer shadow-lg transition-transform active:scale-95"
             >
-              冒険を開始 / データをロード
+              冒険を開始 / セーブ読込
             </button>
           </div>
         )}
 
-        {/* 2. Setup / Character Select Screen */}
+        {/* 2. Character Setup Screen */}
         {currentScreen === 'setup' && (
-          <div id="setup-screen" className="mt-4">
-            <p className="text-center text-[#aaa] text-sm mb-3">
-              <span className="text-[#f0a500]">{userTag}</span> さん
+          <div className="mt-4">
+            <p className="text-center text-sm text-[#ddd] mb-3">
+              冒険者 <span className="text-[#f0a500] font-bold">{userTag}</span> さん
               <br />
-              最初のモンスターを選んでください：
+              最初の相棒モンスターを選んでください：
             </p>
-            <div className="flex flex-col gap-2" id="monster-select-list">
+            <div className="flex flex-col gap-2">
               {playerSelectableMonsters.map((m, idx) => (
                 <button
                   key={idx}
-                  onClick={() => selectMonster(m.name, m.hp, m.atk, m.type)}
-                  className="bg-[#3a3a3a] hover:bg-[#555] text-white border border-[#555] p-2.5 text-xs sm:text-[13px] font-bold rounded-md cursor-pointer transition-all duration-200 text-left"
+                  onClick={() => handleSelectMonster(m)}
+                  className="bg-[#2a2a2a] hover:bg-[#383838] text-white border border-[#444] hover:border-[#f0a500] p-3 rounded-xl cursor-pointer text-left transition-all duration-150"
                 >
-                  {m.name} (HP:{m.hp} / 攻:{m.atk} / 能力:{m.type})
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-bold text-sm text-white">{m.name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-700 text-white font-bold">
+                      {m.rank}
+                    </span>
+                  </div>
+                  <div className="text-xs text-[#aaa]">
+                    HP: {m.hp} / 攻撃力: {m.atk} / 能力: <span className="text-[#f0a500]">{m.type}</span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -1013,220 +971,250 @@ export default function App() {
 
         {/* 3. Home Screen */}
         {currentScreen === 'home' && (
-          <div id="home-screen" className="mt-2.5">
-            <h2 className="text-center mt-2.5 mb-2.5 text-base font-bold text-[#cccccc]">
-              🏠 <span className="text-[#f0a500]">{userTag}</span> のホーム
-            </h2>
-
-            <div className="home-box bg-[#252525] border border-[#444] rounded-lg p-3 mb-3 text-center">
-              <div className="text-base font-bold text-[#00cec9]">
-                所持ダイヤ: 💎 <span id="home-gems">{gems}</span> 個
+          <div className="mt-3">
+            <div className="flex justify-between items-center bg-[#252525] border border-[#444] rounded-xl p-3 mb-3">
+              <div>
+                <span className="text-xs text-[#aaa] block">冒険者</span>
+                <span className="font-bold text-sm text-[#f0a500]">{userTag}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-xs text-[#aaa] block">所持ダイヤ</span>
+                <span className="font-black text-base text-[#00cec9]">💎 {gems} 個</span>
               </div>
             </div>
 
-            <div className="home-box bg-[#252525] border border-[#444] rounded-lg p-3 mb-3">
-              <div className="text-[13px] font-bold text-[#f0a500] text-left mb-1">
-                🐾 所持モンスター一覧
-              </div>
-              <div
-                className="monster-list-box max-h-[110px] overflow-y-auto bg-[#1a1a1a] border border-[#333] rounded p-2 text-left space-y-1"
-                id="my-monster-list"
+            {/* Quick Action: Diamond Transfer */}
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => setIsTransferModalOpen(true)}
+                className="flex-1 bg-[#00cec9] hover:bg-[#81ecec] text-black font-bold p-2 text-xs rounded-xl cursor-pointer shadow transition-colors flex items-center justify-center gap-1"
               >
-                {playerSelectableMonsters.map((m, idx) => (
-                  <div
-                    key={idx}
-                    className="monster-item text-xs py-1 px-1.5 border-b border-[#2a2a2a] last:border-b-0 flex justify-between items-center"
-                  >
-                    <span>
-                      <strong>{m.name}</strong>{' '}
-                      <span className={`tag-rank font-bold px-1 py-0.5 rounded text-[10px] rank-${m.rank}`}>
-                        {m.rank}
-                      </span>
-                    </span>
-                    <span className="text-[#aaa]">
-                      HP:{m.hp} / 攻:{m.atk} [{m.type}]
-                    </span>
-                  </div>
-                ))}
+                💎 ダイヤ送金・受渡
+              </button>
+              <button
+                onClick={() => setIsEnhanceModalOpen(true)}
+                className="flex-1 bg-[#2980b9] hover:bg-[#3498db] text-white font-bold p-2 text-xs rounded-xl cursor-pointer shadow transition-colors flex items-center justify-center gap-1"
+              >
+                ⚔️ モンスター強化
+              </button>
+            </div>
+
+            {/* Monsters Roster */}
+            <div className="bg-[#252525] border border-[#444] rounded-xl p-3 mb-3 text-left">
+              <div className="text-xs font-bold text-[#f0a500] mb-2 flex justify-between">
+                <span>🐾 所持モンスター一覧 ({playerSelectableMonsters.length}体)</span>
+                <span className="text-[10px] text-[#aaa]">タップで出撃切り替え</span>
+              </div>
+              <div className="max-h-[140px] overflow-y-auto space-y-1.5 pr-1">
+                {playerSelectableMonsters.map((m, idx) => {
+                  const isActive = player.name === m.name;
+                  return (
+                    <div
+                      key={idx}
+                      className={`p-2 rounded-lg border text-xs flex justify-between items-center ${
+                        isActive
+                          ? 'bg-[#332b18] border-[#f0a500]'
+                          : 'bg-[#1a1a1a] border-[#333]'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="font-bold text-white">{m.name}</span>
+                          <span className="text-[10px] px-1 py-0.2 rounded bg-[#444] text-[#ddd]">
+                            {m.rank}
+                          </span>
+                          <span className="text-[#f0a500] font-bold text-[11px]">
+                            Lv.{m.level}/{m.maxLevel}
+                          </span>
+                          {isActive && (
+                            <span className="text-[9px] bg-[#f0a500] text-black font-black px-1 rounded">
+                              出撃中
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-[#aaa]">
+                          HP: {m.hp} / 攻: {m.atk} [{m.type}]
+                        </div>
+                      </div>
+                      {!isActive && (
+                        <button
+                          onClick={() => handleSetActiveMonster(m)}
+                          className="bg-[#444] hover:bg-[#555] text-white text-[10px] px-2 py-1 rounded cursor-pointer"
+                        >
+                          出撃
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="home-box bg-[#252525] border border-[#444] rounded-lg p-3 mb-3 text-center">
-              <div className="flex flex-col gap-2">
-                <div className="action-btns grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => drawGacha(1)}
-                    className="bg-[#8e44ad] hover:bg-[#9b59b6] text-white p-2 text-xs font-bold rounded cursor-pointer transition-colors"
-                  >
-                    🎁 単発ガチャ
-                    <br />
-                    <small>(💎50個)</small>
-                  </button>
-                  <button
-                    onClick={() => drawGacha(10)}
-                    className="bg-[#6c5ce7] hover:bg-[#a29bfe] text-white p-2 text-xs font-bold rounded cursor-pointer transition-colors"
-                  >
-                    🎁 10連ガチャ
-                    <br />
-                    <small>(💎480個)</small>
-                  </button>
-                </div>
+            {/* Gacha Section */}
+            <div className="bg-[#252525] border border-[#444] rounded-xl p-3 mb-3">
+              <div className="text-xs text-[#aaa] mb-2">
+                確率: UR: {gachaRates.UR}% / SSR: {gachaRates.SSR}% (被りはLvUP、上限到達で💎返還)
+              </div>
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={openEnhanceNotice}
-                  className="bg-[#2980b9] hover:bg-[#3498db] text-white p-2 text-xs font-bold rounded cursor-pointer transition-colors"
+                  onClick={() => handleDrawGacha(1)}
+                  className="bg-[#8e44ad] hover:bg-[#9b59b6] text-white p-2.5 rounded-xl font-bold text-xs cursor-pointer transition-transform active:scale-95 shadow"
                 >
-                  ⚔️ モンスター強化 (開発中)
+                  🎁 単発ガチャ
+                  <br />
+                  <span className="text-[10px] text-amber-200">💎 50 個</span>
+                </button>
+                <button
+                  onClick={() => handleDrawGacha(10)}
+                  className="bg-[#6c5ce7] hover:bg-[#a29bfe] text-white p-2.5 rounded-xl font-bold text-xs cursor-pointer transition-transform active:scale-95 shadow"
+                >
+                  🎁 10連ガチャ
+                  <br />
+                  <span className="text-[10px] text-amber-200">💎 480 個 (お得!)</span>
                 </button>
               </div>
             </div>
 
+            {/* Home Logs */}
             <div
-              className="log-box bg-[#0d0d0d] border border-[#333] h-[140px] overflow-y-auto p-2.5 text-[13px] leading-relaxed mb-3.5 rounded-md"
+              className="bg-[#0f0f0f] border border-[#333] h-[100px] overflow-y-auto p-2 text-xs leading-relaxed rounded-xl mb-3 text-left"
               ref={homeLogBoxRef}
             >
               {homeLogs.map((log, index) => (
-                <p key={index} className="my-[3px] text-[#e0e0e0] break-words">
+                <p key={index} className="my-1 text-[#ccc] break-words">
                   {log}
                 </p>
               ))}
             </div>
 
             <button
-              onClick={returnToDungeon}
-              className="w-full bg-[#27ae60] hover:bg-[#2ecc71] text-white font-bold p-2.5 rounded-md text-sm cursor-pointer transition-colors"
+              onClick={() => {
+                setCurrentScreen('game');
+                loadEnemy(currentFloorIndex, currentEnemyIndex);
+              }}
+              className="w-full bg-[#27ae60] hover:bg-[#2ecc71] text-white font-black p-3 rounded-xl text-sm cursor-pointer shadow-lg transition-transform active:scale-95"
             >
-              ダンジョン攻略を再開する
+              ダンジョン攻略へ突入！ ({floors[currentFloorIndex]?.name})
             </button>
           </div>
         )}
 
-        {/* 4. Dungeon / Game Screen */}
+        {/* 4. Dungeon Battle Screen */}
         {currentScreen === 'game' && (
-          <div id="game-screen" className="mt-2.5">
-            <h2 id="floor-title" className="text-center mt-2.5 mb-2.5 text-base font-bold text-[#cccccc]">
+          <div className="mt-3">
+            <h2 className="text-center my-2 text-sm font-bold text-[#e0e0e0]">
               {floors[currentFloorIndex]?.name}
             </h2>
 
-            {/* Player Status */}
-            <div className="status-box bg-[#2a2a2a] border border-[#444] p-2.5 px-3.5 mb-2.5 rounded-lg text-sm">
-              <div className="status-row flex justify-between mb-1">
-                <strong>
-                  【<span className="text-[#f0a500]">{userTag}</span>】{' '}
-                  <span id="player-name">{player.name}</span>
+            {/* Player Status Card */}
+            <div className="bg-[#252525] border border-[#444] p-3 mb-2.5 rounded-xl text-xs text-left">
+              <div className="flex justify-between items-center mb-1">
+                <strong className="text-sm">
+                  【<span className="text-[#f0a500]">{userTag}</span>】 {player.name}
+                  <span className="ml-1 text-[11px] text-[#f0a500]">Lv.{player.level}</span>
                 </strong>
-                <span className="sp-bar text-[#00d2d3] font-bold">
-                  SP: <span id="player-sp">{player.sp}</span> pt
-                </span>
+                <span className="text-[#00d2d3] font-bold">SP: {player.sp} pt</span>
               </div>
-              <div className="status-row flex justify-between mb-1">
-                <span className="hp-bar text-[#ff5555] font-bold">
-                  HP: <span id="player-hp">{player.hp}</span> / <span id="player-max-hp">{player.maxHp}</span>
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-[#ff5555] font-bold">
+                  HP: {player.hp} / {player.maxHp}
                 </span>
-                <span className="gem-bar text-[#00cec9] font-bold">
-                  💎 <span id="dungeon-gems">{gems}</span>
-                </span>
+                <span className="text-[#00cec9] font-bold">💎 {gems}</span>
               </div>
-              <div className="status-effect text-[#fabca1] text-[13px] font-bold" id="player-status">
+              <div className="text-[11px] text-[#fabca1]">
                 状態: {getStatusEffectText(player.status)}
               </div>
               {player.type === 'ゾンビ' && (
-                <div id="zombie-summons" className="text-[11px] text-[#a29bfe] mt-0.5 font-bold">
-                  召喚デスゾンビ: <span id="death-zombie-count">{player.deathZombies}</span>体
+                <div className="text-[11px] text-[#a29bfe] mt-0.5 font-bold">
+                  召喚デスゾンビ: {player.deathZombies}体
                 </div>
               )}
             </div>
 
-            {/* Enemy Status */}
-            <div className="status-box bg-[#2a2a2a] border border-[#444] p-2.5 px-3.5 mb-2.5 rounded-lg text-sm">
-              <div className="status-row flex justify-between mb-1">
-                <strong>
-                  【敵】{' '}
-                  <span id="enemy-name">
-                    {enemy.bossType ? `【${enemy.bossType}】` : ''}
-                    {enemy.name}
-                  </span>
+            {/* Enemy Status Card */}
+            <div className="bg-[#252525] border border-[#444] p-3 mb-2.5 rounded-xl text-xs text-left">
+              <div className="flex justify-between items-center mb-1">
+                <strong className="text-sm">
+                  【敵】 {enemy.bossType ? `【${enemy.bossType}】` : ''}
+                  {enemy.name}
                 </strong>
-                <span className="status-effect text-[#fabca1] text-[13px] font-bold" id="enemy-status">
+                <span className="text-[#fabca1] text-[11px]">
                   状態: {getStatusEffectText(enemy.status)}
                 </span>
               </div>
-              <div className="hp-bar text-[#ff5555] font-bold">
-                HP: <span id="enemy-hp">{enemy.hp}</span> / <span id="enemy-max-hp">{enemy.maxHp}</span>
+              <div className="text-[#ff5555] font-bold">
+                HP: {enemy.hp} / {enemy.maxHp}
               </div>
             </div>
 
-            {/* Log Box */}
+            {/* Battle Log Box */}
             <div
-              id="log-box"
               ref={logBoxRef}
-              className="log-box bg-[#0d0d0d] border border-[#333] h-[140px] overflow-y-auto p-2.5 text-[13px] leading-relaxed mb-3.5 rounded-md"
+              className="bg-[#0f0f0f] border border-[#333] h-[130px] overflow-y-auto p-2.5 text-xs leading-relaxed mb-3 rounded-xl text-left"
             >
               {logs.map((log, index) => (
-                <p key={index} className="my-[3px] text-[#e0e0e0] break-words">
+                <p key={index} className="my-1 text-[#e0e0e0] break-words">
                   {log}
                 </p>
               ))}
             </div>
 
-            {/* Battle Controls */}
+            {/* Action Buttons */}
             {!showNextBtn && !isGameOver && (
-              <div id="battle-controls" className="btn-group flex flex-col gap-2">
-                <div className="action-btns grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <button
-                    id="atk-btn"
                     disabled={isBtnDisabled}
                     onClick={() => handlePlayerAction('attack')}
-                    className="bg-[#3a3a3a] hover:bg-[#555] disabled:bg-[#222] disabled:text-[#555] disabled:border-[#333] disabled:cursor-not-allowed text-white border border-[#555] hover:border-[#777] p-2.5 text-xs sm:text-[13px] font-bold rounded-md cursor-pointer transition-all duration-200"
+                    className="bg-[#3a3a3a] hover:bg-[#555] disabled:bg-[#222] disabled:text-[#555] text-white p-2.5 text-xs font-bold rounded-xl cursor-pointer transition-colors"
                   >
                     通常攻撃
                   </button>
                   <button
-                    id="heal-btn"
                     disabled={isBtnDisabled}
                     onClick={() => handlePlayerAction('heal_skill')}
-                    className="bg-[#3a3a3a] hover:bg-[#555] disabled:bg-[#222] disabled:text-[#555] disabled:border-[#333] disabled:cursor-not-allowed text-white border border-[#555] hover:border-[#777] p-2.5 text-xs sm:text-[13px] font-bold rounded-md cursor-pointer transition-all duration-200 truncate"
+                    className="bg-[#3a3a3a] hover:bg-[#555] disabled:bg-[#222] disabled:text-[#555] text-white p-2.5 text-xs font-bold rounded-xl cursor-pointer transition-colors truncate"
                   >
                     {getHealBtnText()}
                   </button>
                 </div>
                 <button
-                  id="atk-skill-btn"
                   disabled={isBtnDisabled}
                   onClick={() => handlePlayerAction('atk_skill')}
-                  className="bg-[#3a3a3a] hover:bg-[#555] disabled:bg-[#222] disabled:text-[#555] disabled:border-[#333] disabled:cursor-not-allowed text-white border border-[#555] hover:border-[#777] p-2.5 text-xs sm:text-[13px] font-bold rounded-md cursor-pointer transition-all duration-200 truncate"
+                  className="bg-[#3a3a3a] hover:bg-[#555] disabled:bg-[#222] disabled:text-[#555] text-white p-2.5 text-xs font-bold rounded-xl cursor-pointer transition-colors truncate"
                 >
                   {getAtkSkillBtnText()}
                 </button>
               </div>
             )}
 
-            {/* Navigation / Next Stage / Restart */}
-            <div className="btn-group flex flex-col gap-2 mt-2.5">
+            {/* Floor Navigation / Restart */}
+            <div className="flex flex-col gap-2 mt-2.5">
               {showHomeBtn && isHomeUnlocked && (
                 <button
-                  id="home-btn"
-                  onClick={goToHome}
-                  className="bg-[#d35400] hover:bg-[#e67e22] text-white font-bold p-2.5 rounded-md text-sm cursor-pointer transition-colors shadow-md"
+                  onClick={() => {
+                    stopEnemyTimer();
+                    setCurrentScreen('home');
+                  }}
+                  className="bg-[#d35400] hover:bg-[#e67e22] text-white font-bold p-2.5 rounded-xl text-sm cursor-pointer shadow"
                 >
-                  🏠 ホームへ行く
+                  🏠 ホームへ戻る
                 </button>
               )}
 
               {showNextBtn && (
                 <button
-                  id="next-btn"
-                  onClick={nextStage}
-                  className="bg-[#f0a500] hover:bg-[#e09400] text-[#121212] font-black p-2.5 rounded-md text-sm cursor-pointer transition-all shadow-md"
+                  onClick={handleNextStage}
+                  className="bg-[#f0a500] hover:bg-[#e09400] text-black font-black p-2.5 rounded-xl text-sm cursor-pointer shadow"
                 >
-                  次の階層へ
+                  次の敵・階層へ
                 </button>
               )}
 
               {isGameOver && (
                 <button
-                  id="restart-btn"
                   onClick={handleRestart}
-                  className="bg-[#3a3a3a] hover:bg-[#555] text-white border border-[#555] hover:border-[#777] p-2.5 text-sm font-bold rounded-md cursor-pointer transition-all duration-200"
+                  className="bg-[#3a3a3a] hover:bg-[#555] text-white p-2.5 text-sm font-bold rounded-xl cursor-pointer transition-colors"
                 >
                   最初からやり直す
                 </button>
@@ -1236,369 +1224,70 @@ export default function App() {
         )}
       </div>
 
-      {/* Admin Modal */}
-      {isAdminModalOpen && (
-        <div className="modal fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
-          <div className="modal-content bg-[#222] border border-[#555] p-5 rounded-xl w-[90%] max-w-[420px] max-h-[85vh] overflow-y-auto text-white shadow-2xl relative">
-            <span
-              className="float-right cursor-pointer text-gray-400 hover:text-white text-lg font-bold"
-              onClick={() => setIsAdminModalOpen(false)}
-            >
-              ✕
-            </span>
+      {/* Modals */}
+      <GachaModal
+        isOpen={isGachaModalOpen}
+        onClose={() => setIsGachaModalOpen(false)}
+        results={gachaResults}
+        totalRefundGems={gachaTotalRefund}
+      />
 
-            {!isAdminLoggedIn ? (
-              <div id="admin-login-view" className="mt-2">
-                <h3 className="text-base font-bold mb-3">管理者ログイン</h3>
-                <input
-                  type="password"
-                  value={adminCodeInput}
-                  onChange={(e) => setAdminCodeInput(e.target.value)}
-                  placeholder="パスワードを入力"
-                  className="w-full p-2 mb-2.5 bg-[#333] border border-[#555] text-white text-xs rounded outline-none"
-                />
-                <button
-                  onClick={checkAdminCode}
-                  className="w-full bg-[#f0a500] hover:bg-[#e09400] text-black font-bold p-2 text-xs rounded cursor-pointer"
-                >
-                  ログイン
-                </button>
-              </div>
-            ) : (
-              <div id="admin-room-view" className="mt-2 text-left">
-                <h3 className="text-sm font-bold mb-2.5">🛠️ 仕様変更・管理者ルーム</h3>
-                <div className="flex flex-wrap gap-1 mb-3">
-                  <button
-                    className={`tab-btn px-2 py-1 text-[10px] rounded cursor-pointer ${
-                      adminTab === 'status' ? 'bg-[#f0a500] text-black font-bold' : 'bg-[#333] text-white'
-                    }`}
-                    onClick={() => setAdminTab('status')}
-                  >
-                    ステータス調整
-                  </button>
-                  <button
-                    className={`tab-btn px-2 py-1 text-[10px] rounded cursor-pointer ${
-                      adminTab === 'enemy' ? 'bg-[#f0a500] text-black font-bold' : 'bg-[#333] text-white'
-                    }`}
-                    onClick={() => setAdminTab('enemy')}
-                  >
-                    敵追加
-                  </button>
-                  <button
-                    className={`tab-btn px-2 py-1 text-[10px] rounded cursor-pointer ${
-                      adminTab === 'gacha' ? 'bg-[#f0a500] text-black font-bold' : 'bg-[#333] text-white'
-                    }`}
-                    onClick={() => setAdminTab('gacha')}
-                  >
-                    ガチャ調整
-                  </button>
-                  <button
-                    className={`tab-btn px-2 py-1 text-[10px] rounded cursor-pointer ${
-                      adminTab === 'floor' ? 'bg-[#f0a500] text-black font-bold' : 'bg-[#333] text-white'
-                    }`}
-                    onClick={() => setAdminTab('floor')}
-                  >
-                    階層追加
-                  </button>
-                </div>
+      <TransferModal
+        isOpen={isTransferModalOpen}
+        onClose={() => setIsTransferModalOpen(false)}
+        currentGems={gems}
+        currentUserTag={userTag}
+        onTransfer={handleTransferDiamonds}
+      />
 
-                {/* Tab 1: Status Adjustments */}
-                {adminTab === 'status' && (
-                  <div id="tab-status" className="text-xs space-y-2">
-                    <p className="text-[11px] text-[#aaa] m-0">
-                      戦闘中のステータスや仕様を直接書き換えます。
-                    </p>
-                    <button
-                      onClick={adminFullHeal}
-                      className="w-full bg-[#27ae60] hover:bg-[#2ecc71] text-white font-bold p-2 rounded cursor-pointer"
-                    >
-                      💖 プレイヤー全回復＆SP+10
-                    </button>
-                    <div>
-                      <label className="block text-[11px] text-[#aaa]">ダイヤ付与:</label>
-                      <input
-                        type="number"
-                        value={adminSetGems}
-                        onChange={(e) => setAdminSetGems(e.target.value)}
-                        placeholder="例: 500"
-                        className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                      />
-                      <button
-                        onClick={adminAddGems}
-                        className="w-full mt-1 bg-[#3a3a3a] hover:bg-[#555] text-white p-1.5 rounded font-bold"
-                      >
-                        ダイヤを追加
-                      </button>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-[#aaa]">攻撃力変更:</label>
-                      <input
-                        type="number"
-                        value={adminSetAtk}
-                        onChange={(e) => setAdminSetAtk(e.target.value)}
-                        placeholder="例: 999"
-                        className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                      />
-                      <button
-                        onClick={adminSetAtkValue}
-                        className="w-full mt-1 bg-[#3a3a3a] hover:bg-[#555] text-white p-1.5 rounded font-bold"
-                      >
-                        攻撃力を適用
-                      </button>
-                    </div>
-                    <hr className="border-[#444] my-2" />
-                    <div>
-                      <label className="block text-[11px] text-[#aaa] font-bold">
-                        新スタートモンスターの追加:
-                      </label>
-                      <input
-                        type="text"
-                        value={adminCustomMName}
-                        onChange={(e) => setAdminCustomMName(e.target.value)}
-                        placeholder="名前"
-                        className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                      />
-                      <div className="grid grid-cols-2 gap-2 mt-1">
-                        <input
-                          type="number"
-                          value={adminCustomMHp}
-                          onChange={(e) => setAdminCustomMHp(parseInt(e.target.value, 10) || 0)}
-                          placeholder="HP"
-                          className="p-2 bg-[#333] border border-[#555] text-white rounded text-xs"
-                        />
-                        <input
-                          type="number"
-                          value={adminCustomMAtk}
-                          onChange={(e) => setAdminCustomMAtk(parseInt(e.target.value, 10) || 0)}
-                          placeholder="攻撃力"
-                          className="p-2 bg-[#333] border border-[#555] text-white rounded text-xs"
-                        />
-                      </div>
-                      <label className="block text-[11px] text-[#aaa] mt-1">能力（タイプ）:</label>
-                      <select
-                        value={adminCustomMType}
-                        onChange={(e) => setAdminCustomMType(e.target.value as AbilityType)}
-                        className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                      >
-                        <option value="オルゴン">オルゴン (凍結/ライフフルーツ)</option>
-                        <option value="ラリ">ラリ (困惑/油蓄え)</option>
-                        <option value="ドレイム">ドレイム (火傷/全回復&最大HPUP)</option>
-                        <option value="ゾンビ">ゾンビ (即死or召喚/ゾーンビー)</option>
-                        <option value="ノーマル">なし (通常の攻撃・回復スキル)</option>
-                      </select>
-                      <button
-                        onClick={adminAddSelectableMonster}
-                        className="w-full mt-2 bg-[#f0a500] hover:bg-[#e09400] text-black font-bold p-2 rounded cursor-pointer"
-                      >
-                        初期選択可能リストに追加
-                      </button>
-                    </div>
-                  </div>
-                )}
+      <EnhanceModal
+        isOpen={isEnhanceModalOpen}
+        onClose={() => setIsEnhanceModalOpen(false)}
+        monsters={playerSelectableMonsters}
+        currentGems={gems}
+        onEnhance={handleEnhanceMonster}
+      />
 
-                {/* Tab 2: Enemy Addition */}
-                {adminTab === 'enemy' && (
-                  <div id="tab-enemy" className="text-xs space-y-2">
-                    <div>
-                      <label className="block text-[11px] text-[#aaa]">配置先の階層を選択:</label>
-                      <select
-                        value={newEnemyFloorSelect}
-                        onChange={(e) => setNewEnemyFloorSelect(parseInt(e.target.value, 10))}
-                        className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                      >
-                        {floors.map((fl, idx) => (
-                          <option key={idx} value={idx}>
-                            {fl.name} (現在 {fl.enemies.length} 体)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] text-[#aaa]">敵の名前:</label>
-                      <input
-                        type="text"
-                        value={newEnemyName}
-                        onChange={(e) => setNewEnemyName(e.target.value)}
-                        placeholder="名前"
-                        className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[11px] text-[#aaa]">HP:</label>
-                        <input
-                          type="number"
-                          value={newEnemyHp}
-                          onChange={(e) => setNewEnemyHp(parseInt(e.target.value, 10) || 0)}
-                          className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] text-[#aaa]">攻撃力:</label>
-                        <input
-                          type="number"
-                          value={newEnemyAtk}
-                          onChange={(e) => setNewEnemyAtk(parseInt(e.target.value, 10) || 0)}
-                          className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] text-[#aaa]">特殊行動パターン（能力）:</label>
-                      <select
-                        value={newEnemyType}
-                        onChange={(e) =>
-                          setNewEnemyType(e.target.value as 'golem' | 'enon' | 'ushi' | 'obadora' | '')
-                        }
-                        className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                      >
-                        <option value="">なし (通常の攻撃のみ)</option>
-                        <option value="golem">ドラッグ飲む (回復 & 攻撃UP/ダウン)</option>
-                        <option value="enon">自己回復を試みる</option>
-                        <option value="ushi">突進攻撃 (25ダメ)</option>
-                        <option value="obadora">アビス (拘束 / 火傷 / 固定ダメ)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] text-[#aaa]">ボス種別:</label>
-                      <select
-                        value={newEnemyBossType}
-                        onChange={(e) => setNewEnemyBossType(e.target.value as BossType)}
-                        className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                      >
-                        <option value="">なし</option>
-                        <option value="中BOSS">中BOSS (10💎)</option>
-                        <option value="BOSS">BOSS (25💎)</option>
-                        <option value="強BOSS">強BOSS (50💎)</option>
-                        <option value="狂BOSS">狂BOSS (100💎)</option>
-                        <option value="最恐BOSS">最恐BOSS (1000💎)</option>
-                      </select>
-                    </div>
-
-                    <button
-                      onClick={addCustomEnemy}
-                      className="w-full mt-2 bg-[#f0a500] hover:bg-[#e09400] text-black font-bold p-2 rounded cursor-pointer"
-                    >
-                      指定した階層に敵を追加
-                    </button>
-                  </div>
-                )}
-
-                {/* Tab 3: Gacha Adjustments */}
-                {adminTab === 'gacha' && (
-                  <div id="tab-gacha" className="text-xs space-y-2">
-                    <p className="text-[11px] text-[#aaa] m-0">ガチャ確率（%）を設定します。</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[11px] text-[#aaa]">UR(%):</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={rateUrInput}
-                          onChange={(e) => setRateUrInput(parseFloat(e.target.value) || 0)}
-                          className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] text-[#aaa]">SSR(%):</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={rateSsrInput}
-                          onChange={(e) => setRateSsrInput(parseFloat(e.target.value) || 0)}
-                          className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                        />
-                      </div>
-                    </div>
-                    <button
-                      onClick={updateGachaRates}
-                      className="w-full bg-[#3a3a3a] hover:bg-[#555] text-white font-bold p-1.5 rounded cursor-pointer"
-                    >
-                      確率を更新
-                    </button>
-                    <hr className="border-[#444] my-2" />
-                    <div>
-                      <label className="block text-[11px] text-[#aaa] font-bold">ガチャキャラ追加:</label>
-                      <input
-                        type="text"
-                        value={newGachaName}
-                        onChange={(e) => setNewGachaName(e.target.value)}
-                        placeholder="名前"
-                        className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                      />
-                      <label className="block text-[11px] text-[#aaa] mt-1">レアリティ:</label>
-                      <select
-                        value={newGachaRank}
-                        onChange={(e) =>
-                          setNewGachaRank(e.target.value as 'N' | 'R' | 'SR' | 'SSR' | 'UR')
-                        }
-                        className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                      >
-                        <option value="N">N</option>
-                        <option value="R">R</option>
-                        <option value="SR">SR</option>
-                        <option value="SSR">SSR</option>
-                        <option value="UR">UR</option>
-                      </select>
-                      <div className="grid grid-cols-2 gap-2 mt-1">
-                        <input
-                          type="number"
-                          value={newGachaHp}
-                          onChange={(e) => setNewGachaHp(parseInt(e.target.value, 10) || 0)}
-                          placeholder="HP"
-                          className="p-2 bg-[#333] border border-[#555] text-white rounded text-xs"
-                        />
-                        <input
-                          type="number"
-                          value={newGachaAtk}
-                          onChange={(e) => setNewGachaAtk(parseInt(e.target.value, 10) || 0)}
-                          placeholder="攻撃力"
-                          className="p-2 bg-[#333] border border-[#555] text-white rounded text-xs"
-                        />
-                      </div>
-                      <label className="block text-[11px] text-[#aaa] mt-1">能力（タイプ）:</label>
-                      <select
-                        value={newGachaType}
-                        onChange={(e) => setNewGachaType(e.target.value as AbilityType)}
-                        className="w-full p-2 bg-[#333] border border-[#555] text-white rounded text-xs mt-1"
-                      >
-                        <option value="オルゴン">オルゴン (凍結/ライフフルーツ)</option>
-                        <option value="ラリ">ラリ (困惑/油蓄え)</option>
-                        <option value="ドレイム">ドレイム (火傷/全回復&最大HPUP)</option>
-                        <option value="ゾンビ">ゾンビ (即死or召喚/ゾーンビー)</option>
-                        <option value="ノーマル">なし (通常の攻撃・回復スキル)</option>
-                      </select>
-                      <button
-                        onClick={addCustomGachaChar}
-                        className="w-full mt-2 bg-[#f0a500] hover:bg-[#e09400] text-black font-bold p-2 rounded cursor-pointer"
-                      >
-                        ガチャプールに追加
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Tab 4: Floor Addition */}
-                {adminTab === 'floor' && (
-                  <div id="tab-floor" className="text-xs space-y-3">
-                    <p className="text-xs">現在の階層数: {floors.length}</p>
-                    <button
-                      onClick={addNewFloor}
-                      className="w-full bg-[#f0a500] hover:bg-[#e09400] text-black font-bold p-2.5 rounded cursor-pointer"
-                    >
-                      末尾に新階層を追加
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <AdminModal
+        isOpen={isAdminModalOpen}
+        onClose={() => setIsAdminModalOpen(false)}
+        player={player}
+        gems={gems}
+        floors={floors}
+        playerSelectableMonsters={playerSelectableMonsters}
+        onUpdatePlayer={(up) => {
+          const updated = { ...player, ...up };
+          setPlayer(updated);
+          saveGame({ player: updated });
+        }}
+        onUpdateGems={(newG) => {
+          setGems(newG);
+          saveGame({ gems: newG });
+        }}
+        onUpdateFloors={(newF) => {
+          setFloors(newF);
+          saveGame({ floors: newF });
+        }}
+        onUpdateSelectableMonsters={(newM) => {
+          setPlayerSelectableMonsters(newM);
+          saveGame({ playerSelectableMonsters: newM });
+        }}
+        onAddGachaCharacter={(newChar) => {
+          setGachaPool((prev) => ({
+            ...prev,
+            [newChar.rank as 'N' | 'R' | 'SR' | 'SSR' | 'UR']: [
+              ...(prev[newChar.rank as 'N' | 'R' | 'SR' | 'SSR' | 'UR'] || []),
+              newChar,
+            ],
+          }));
+        }}
+        onUpdateGachaRates={(ur, ssr) => {
+          setGachaRates((prev) => ({ ...prev, UR: ur, SSR: ssr }));
+        }}
+        gachaRateUr={gachaRates.UR}
+        gachaRateSsr={gachaRates.SSR}
+        addLog={addLog}
+      />
     </div>
   );
 }

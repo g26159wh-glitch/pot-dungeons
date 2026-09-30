@@ -11,6 +11,19 @@ export interface StatusEffect {
   turns: number;
 }
 
+export interface MonsterProfile {
+  id?: string;
+  name: string;
+  hp: number;
+  atk: number;
+  type: AbilityType;
+  rank: RarityRank;
+  level: number;
+  maxLevel: number;
+  baseHp: number;
+  baseAtk: number;
+}
+
 export interface Player {
   name: string;
   hp: number;
@@ -21,13 +34,8 @@ export interface Player {
   status: StatusEffect | null;
   hasRevived: boolean;
   deathZombies: number;
-}
-
-export interface MonsterProfile {
-  name: string;
-  hp: number;
-  atk: number;
-  type: AbilityType;
+  level: number;
+  maxLevel: number;
   rank: RarityRank;
 }
 
@@ -54,6 +62,7 @@ export interface Enemy {
 export interface Floor {
   name: string;
   enemies: EnemyDef[];
+  clearRewardGems?: number;
 }
 
 export interface GachaRates {
@@ -62,6 +71,23 @@ export interface GachaRates {
   SR: number;
   R: number;
   N: number;
+}
+
+export interface GachaPullResult {
+  monster: MonsterProfile;
+  isNew: boolean;
+  levelUp: boolean;
+  oldLevel?: number;
+  newLevel?: number;
+  refundGems: number;
+}
+
+export interface TransferHistoryItem {
+  id: string;
+  from: string;
+  to: string;
+  amount: number;
+  timestamp: string;
 }
 
 export interface SaveData {
@@ -74,4 +100,6 @@ export interface SaveData {
   playerSelectableMonsters: MonsterProfile[];
   player: Player;
   floors: Floor[];
+  gachaRates?: GachaRates;
+  transferHistory?: TransferHistoryItem[];
 }
